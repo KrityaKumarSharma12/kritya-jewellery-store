@@ -1,31 +1,62 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
+const imagekit = require('../config/imagekit');
 
-// Absolute path to /backend/uploads
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads');
+// ImageKit-backed Multer storage engine.
+// Buffers the file in memory, uploads to ImageKit, and exposes
+// `path`, `filename`, `mimetype`, `size` on req.file — matching
+// what the rest of the app expects from disk storage.
+class ImageKitStorage {
+  _handleFile(req, file, cb) {
+    const chunks = [];
+    file.stream.on('data', (chunk) => chunks.push(chunk));
+    file.stream.on('error', (err) => cb(err));
+    file.stream.on('end', async () => {
+      try {
+        const buffer = Buffer.concat(chunks);
 
-// Create folder if it doesn't exist
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+        // Preserve the original filename pattern (clean + timestamped)
+        const ext = file.originalname.includes('.')
+          ? '.' + file.originalname.split('.').pop()
+          : '';
+        const base = file.originalname
+          .replace(/\.[^/.]+$/, '')
+          .replace(/[^a-z0-9]/gi, '-')
+          .toLowerCase()
+          .slice(0, 60);
+        const safeName = `${base}-${Date.now()}${ext}`;
+
+        const result = await imagekit.upload({
+          file: buffer,
+          fileName: safeName,
+          folder: '/kritya-uploads',
+          useUniqueFileName: true,
+        });
+
+        cb(null, {
+          path: result.url,          // full https://ik.imagekit.io/... URL
+          filename: result.fileId,   // ImageKit file ID (for future delete)
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: result.size,
+        });
+      } catch (err) {
+        cb(err);
+      }
+    });
+  }
+
+  _removeFile(req, file, cb) {
+    // Optional: delete from ImageKit if needed later.
+    // For now, do nothing — orphan cleanup can be a separate task.
+    cb(null);
+  }
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const base = path
-      .basename(file.originalname, ext)
-      .replace(/[^a-z0-9]/gi, '-')
-      .toLowerCase()
-      .slice(0, 60);
-    cb(null, `${base}-${Date.now()}${ext}`);
-  },
-});
+const storage = new ImageKitStorage();
 
 const multerUpload = multer({
   storage,
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB — same as before
   fileFilter: (req, file, cb) => {
     const ok = file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/');
     if (!ok) return cb(new Error('Only image or video files are allowed'));
@@ -34,7 +65,7 @@ const multerUpload = multer({
 });
 
 class UploadService {
-  // Exposed for the route file to use as middleware
+  // Exposed for the route file to use as middleware — unchanged
   get singleUploadMiddleware() {
     return multerUpload.single('file');
   }
@@ -47,11 +78,9 @@ class UploadService {
       throw err;
     }
 
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    const url = `${baseUrl}/uploads/${req.file.filename}`;
-
+    // req.file.path is now the ImageKit URL, not a local path
     return {
-      url,
+      url: req.file.path,
       filename: req.file.filename,
       mimetype: req.file.mimetype,
       size: req.file.size,
