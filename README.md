@@ -42,3 +42,29 @@ A full-stack e-commerce platform for a luxury jewellery brand — built with Rea
 - **PDFKit** for invoice generation
 
 ## 📁 Project Structure
+
+kritya-jewellery-store/
+├── backend/ # Express API + Prisma
+│ ├── prisma/
+│ │ ├── schema.prisma
+│ │ ├── seed.js
+│ │ └── seed-cms.js
+│ ├── src/
+│ │ ├── config/ # Cache, DB config
+│ │ ├── controllers/ # Route handlers
+│ │ ├── middleware/ # Auth, validation, upload
+│ │ ├── routes/ # API routes
+│ │ ├── services/ # Business logic
+│ │ ├── lib/ # Prisma client, helpers
+│ │ └── index.js
+│ └── package.json
+├── frontend/ # React app
+│ ├── public/
+│ ├── src/
+│ │ ├── components/ # Reusable UI
+│ │ ├── context/ # Auth, Cart, Wishlist, Theme
+│ │ ├── pages/ # Route pages
+│ │ │ └── admin/ # Admin panel pages
+│ │ └── App.jsx
+│ └── package.json
+└── README.md
