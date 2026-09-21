@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+*/.env
+*/.env.*
+!*/.env.example
+
+# Build outputs
+build/
+dist/
+*/build/
+*/dist/
+**/build/
+**/dist/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+*/logs/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Prisma local database files
+*.db
+*.db-journal
+*.sqlite
+
+# Caches
+.cache/
+.parcel-cache/
+.eslintcache
+.pnp/
+.pnp.js
+
+# React / Vite
+frontend/build/
+frontend/dist/
+
+# Coverage
+coverage/
+*/coverage/
+
+# Local env variants
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

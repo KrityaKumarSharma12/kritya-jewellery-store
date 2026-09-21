@@ -1,0 +1,1160 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// USER & AUTH MODELS
+// ============================================================
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  name        String
+  role        Role     @default(CUSTOMER)
+  phone       String?
+  address     String?
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  orders      Order[]
+  cart        Cart[]
+  wishlist    Wishlist[]
+  wishlistItems WishlistItem[]
+  customerGroupId String?
+  customerGroup   CustomerGroup? @relation(fields: [customerGroupId], references: [id])
+  
+  inventoryAdjustments InventoryAdjustment[]
+  couponUsages         CouponUsage[]
+  returns              Return[]
+  auditLogs            AuditLog[]
+  abandonedCarts       AbandonedCart[]
+}
+
+model AdminUser {
+  id            String    @id @default(cuid())
+  name          String    @db.VarChar(100)
+  email         String    @unique
+  password      String
+  role          AdminRole @default(ADMIN)
+  permissions   String[]  // Array of permission strings
+  isActive      Boolean   @default(true)
+  lastLogin     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  auditLogs     AuditLog[]
+}
+
+// ============================================================
+// CUSTOMER GROUP
+// ============================================================
+
+model CustomerGroup {
+  id          String   @id @default(cuid())
+  name        String   @unique @db.VarChar(50)
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  customers   User[]
+  prices      CustomerGroupPrice[]
+}
+
+// ============================================================
+// CATEGORY & SUBCATEGORY
+// ============================================================
+
+model Category {
+  id            String    @id @default(cuid())
+  name          String    @unique @db.VarChar(100)
+  slug          String    @unique @db.VarChar(100)
+  description   String?   @db.Text
+  image         String?   @db.VarChar(500)
+  isActive      Boolean   @default(true)
+  displayOrder  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  subcategories Subcategory[]
+  
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+model Subcategory {
+  id            String    @id @default(cuid())
+  name          String    @db.VarChar(100)
+  slug          String    @db.VarChar(100)
+  description   String?   @db.Text
+  categoryId    String
+  category      Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@unique([categoryId, slug])
+  @@index([categoryId])
+  @@index([isActive])
+}
+
+// ============================================================
+// PRODUCT MODELS
+// ============================================================
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  price       Float
+  category    String
+  material    String
+  weight      String
+  images      String[]
+  stock       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // ---- NEW FIELDS FOR PREMIUM PRODUCT FORM ----
+  productSizing     String?   @db.VarChar(50)   // "Free size" | "Sized"
+  productStyle      String?   @db.VarChar(100)
+  collectionId      String?
+  collection        Collection? @relation(fields: [collectionId], references: [id])
+  occasion          String?   @db.VarChar(100)
+  gst               Decimal?    @default(3.0) @db.Decimal(5,2)
+  returnPolicy      String?   @db.VarChar(100)
+  note              String?   @db.Text
+  continueSelling   Boolean   @default(false)
+  
+  // Shipping
+  shippingLength    Decimal?    @db.Decimal(10,2)
+  shippingWidth     Decimal?    @db.Decimal(10,2)
+  shippingHeight    Decimal?    @db.Decimal(10,2)
+  
+  // SEO
+  metaTitle         String?   @db.VarChar(200)
+  metaDescription   String?   @db.Text
+  metaKeywords      String[]
+  isBestSeller      Boolean   @default(false)
+  isFastDelivery    Boolean   @default(false)
+  tags              String[]
+  
+  // ---- EXISTING RELATIONS ----
+  orderItems      OrderItem[]
+  cartItems       Cart[]
+  wishlistItems   Wishlist[]
+  dynamicPrices   DynamicPrice[]
+  inventory       Inventory[]
+  wishlistItemsEnhanced WishlistItem[]
+  returns         ReturnItem[]
+  
+  // ---- NEW RELATIONS ----
+  variants          ProductVariant[]
+  screwOptions      ScrewOption[]
+  colorMedia        ColorMedia[]
+  pricingRules      PricingRule[]
+}
+
+// ============================================================
+// JEWELLERY PRODUCT MODELS
+// ============================================================
+
+model JewelleryProduct {
+  id            String    @id @default(cuid())
+  name          String    @db.VarChar(200)
+  sku           String    @unique @db.VarChar(50)
+  description   String?   @db.Text
+  category      String    @db.VarChar(50)
+  subCategory   String?   @db.VarChar(50)
+  gender        String    @default("UNISEX") @db.VarChar(20)
+  isActive      Boolean   @default(true)
+  isBestseller  Boolean   @default(false)
+  isGifting     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  variants      JewelleryVariant[]
+  images        JewelleryImage[]
+}
+
+model JewelleryVariant {
+  id            String    @id @default(cuid())
+  productId     String
+  product       JewelleryProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  // Metal Details
+  metalType     String    @db.VarChar(20)
+  metalKarat    Int
+  goldWeight    Decimal?  @db.Decimal(5,2)
+  
+  // Diamond Details
+  diamondId     String?
+  diamond       Diamond?  @relation(fields: [diamondId], references: [id])
+  diamondCarat  Decimal?  @db.Decimal(5,2)
+  diamondShape  String?   @db.VarChar(50)
+  diamondColor  String?   @db.VarChar(10)
+  diamondClarity String?  @db.VarChar(20)
+  diamondCut    String?   @db.VarChar(50)
+  diamondPieces Int?      @default(1)
+  
+  // Making Charges
+  makingChargeType String  @default("PERCENTAGE") @db.VarChar(20)
+  makingCharge     Decimal @db.Decimal(10,2)
+  wastagePercent   Decimal? @db.Decimal(5,2)
+  
+  // Pricing
+  basePrice     Decimal?  @db.Decimal(10,2)
+  currentPrice  Decimal?  @db.Decimal(10,2)
+  lastPriceUpdate DateTime?
+  
+  // Stock
+  stock         Int       @default(0)
+  sku           String?   @unique @db.VarChar(50)
+  isActive      Boolean   @default(true)
+  isDefault     Boolean   @default(false)
+  size          String?   @db.VarChar(20)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  inventory     Inventory[]
+  returns       ReturnItem[]
+  wishlistItems WishlistItem[]
+}
+
+model JewelleryImage {
+  id            String    @id @default(cuid())
+  productId     String
+  product       JewelleryProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  url           String    @db.VarChar(500)
+  altText       String?   @db.VarChar(200)
+  isPrimary     Boolean   @default(false)
+  sortOrder     Int       @default(0)
+  createdAt     DateTime  @default(now())
+}
+
+// ============================================================
+// PRODUCT VARIANT (NEW)
+// ============================================================
+
+model ProductVariant {
+  id                String    @id @default(cuid())
+  productId         String
+  product           Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  diamondId         String?
+  diamond           Diamond?  @relation(fields: [diamondId], references: [id], onDelete: SetNull)
+  
+  // Metal
+  metal             String    @db.VarChar(50)   // Gold, Silver, Platinum
+  metalWeight       Decimal     @db.Decimal(10,3) // in grams
+  metalColor        String    @db.VarChar(50)   // Rose, Yellow, White
+  metalKarat        Int?                         // 9 | 14 | 18 | 22 | 24 (null for silver/platinum)
+  productSize       String?   @db.VarChar(50)   // "US 6", "16", "Free size"
+  
+  // Gemstone
+  gemstone          String?   @db.VarChar(100)
+  gemstoneWeight    Decimal?    @db.Decimal(10,3) // in carats
+  gemstoneRateId    String?     
+  gemstoneRate      GemstoneRate?   @relation(fields: [gemstoneRateId], references: [id], onDelete: SetNull)
+  numberOfDiamonds  Int?      @default(0)
+  
+  // Side Diamonds
+  numberOfSideDiamonds Int?   @default(0)
+  sideDiamondPrice     Decimal? @db.Decimal(10,2) // per carat
+  sideDiamondWeight    Decimal? @db.Decimal(10,3) // in carats
+  sideDiamondQuality   String? @db.VarChar(50)
+  
+  // Making Charges
+  karigar              String? @db.VarChar(100)
+  makingChargeWeightRange String? @db.VarChar(50)
+  makingChargeOverride    Decimal? @db.Decimal(10,2)
+  
+  // Semi-precious
+  beadsWeight       Decimal?    @db.Decimal(10,3)
+  stoneSubtractWeight Decimal?  @db.Decimal(10,3)
+  stoneValue        Decimal?    @db.Decimal(10,2)
+  customOrderPremiumType  String? @db.VarChar(50)   // None, Percent, Fixed
+  customOrderPremiumValue Decimal?  @db.Decimal(10,2)
+  
+  // Stock
+  stock             Int       @default(0)
+  sku               String?   @db.VarChar(100)
+  
+  // Computed
+  calculatedPrice   Decimal?    @db.Decimal(10,2)
+  pricingBreakdown  Json?
+  
+  isActive          Boolean   @default(true)
+  isDefault         Boolean   @default(false)
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+// ============================================================
+// COLLECTION (NEW)
+// ============================================================
+
+model Collection {
+  id            String    @id @default(cuid())
+  name          String    @unique @db.VarChar(100)
+  slug          String    @unique @db.VarChar(100)
+  description   String?   @db.Text
+  image         String?   @db.VarChar(500)
+  color         String    @default("#C9A227") @db.VarChar(20)
+  displayOrder  Int       @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  products      Product[]
+}
+
+// ============================================================
+// SCREW OPTION (NEW)
+// ============================================================
+
+model ScrewOption {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  screwType     String    @db.VarChar(100)
+  screwMaterial String    @db.VarChar(100)
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now())
+}
+
+// ============================================================
+// COLOR MEDIA (NEW)
+// ============================================================
+
+model ColorMedia {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  color         String    @db.VarChar(50)   // Rose, Yellow, White
+  url           String    @db.VarChar(500)
+  type          String    @default("image") @db.VarChar(20)   // image | video
+  isPrimary     Boolean   @default(false)
+  sortOrder     Int       @default(0)
+  createdAt     DateTime  @default(now())
+  
+  @@index([productId, color])
+}
+
+// ============================================================
+// PRICING RULE (NEW - per product)
+// ============================================================
+
+model PricingRule {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  
+  ruleType      String    @db.VarChar(50)   // "making_charge", "wastage", "margin"
+  weightFrom    Decimal?    @db.Decimal(10,3)
+  weightTo      Decimal?    @db.Decimal(10,3)
+  value         Decimal     @db.Decimal(10,2)
+  valueType     String    @db.VarChar(20)   // "percent" | "fixed"
+  createdAt     DateTime  @default(now())
+}
+
+// ============================================================
+// DIAMOND
+// ============================================================
+
+model Diamond {
+  id            String    @id @default(cuid())
+  name          String    @db.VarChar(100)
+  shape         String    @db.VarChar(50)
+  color         String    @db.VarChar(10)
+  clarity       String    @db.VarChar(20)
+  cut           String    @db.VarChar(50)
+  carat         Decimal   @db.Decimal(5,2)
+  pricePerCarat Decimal   @db.Decimal(10,2)
+  certification String?   @db.VarChar(50)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  variants      JewelleryVariant[]
+  productVariants   ProductVariant[]
+}
+
+// ============================================================
+// INVENTORY
+// ============================================================
+
+model Inventory {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId     String?
+  variant       JewelleryVariant? @relation(fields: [variantId], references: [id])
+  
+  // Stock tracking
+  quantity      Int       @default(0)
+  reserved      Int       @default(0)
+  sold          Int       @default(0)
+  damaged       Int       @default(0)
+  
+  // Weight tracking
+  grossWeight   Decimal?  @db.Decimal(10,3)
+  netWeight     Decimal?  @db.Decimal(10,3)
+  metalWeight   Decimal?  @db.Decimal(10,3)
+  diamondWeight Decimal?  @db.Decimal(10,3)
+  stoneWeight   Decimal?  @db.Decimal(10,3)
+  
+  // Tracking
+  batchNumber   String?   @db.VarChar(50)
+  barcode       String?   @unique @db.VarChar(100)
+  rfidTag       String?   @unique @db.VarChar(50)
+  
+  // Status
+  status        InventoryStatus @default(IN_STOCK)
+  location      String?   @db.VarChar(100)
+  
+  lastCountDate DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // History
+  adjustments   InventoryAdjustment[]
+  
+  @@index([productId])
+  @@index([variantId])
+  @@index([status])
+  @@index([batchNumber])
+}
+
+model InventoryAdjustment {
+  id            String    @id @default(cuid())
+  inventoryId   String
+  inventory     Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  
+  // Adjustment details
+  type          AdjustmentType
+  quantity      Int
+  reason        String    @db.Text
+  notes         String?   @db.Text
+  
+  // Before/After
+  previousStock Int
+  newStock      Int
+  
+  // Who
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  
+  createdAt     DateTime  @default(now())
+}
+
+// ============================================================
+// METAL RATES
+// ============================================================
+
+model MetalRate {
+  id            String    @id @default(cuid())
+  metal         MetalType @default(GOLD)
+  karat         Int?      // For gold: 24, 22, 18, 14
+  purity        Decimal   @db.Decimal(5,2)
+  ratePerGram   Decimal   @db.Decimal(10,2)
+  currency      String    @default("INR") @db.VarChar(3)
+  source        String    @default("MANUAL") @db.VarChar(50)
+  effectiveAt   DateTime  @default(now())
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // History tracking
+  history       MetalRateHistory[]
+  dynamicPrices DynamicPrice[]
+  
+  @@unique([metal, karat, currency])
+  @@index([metal])
+  @@index([karat])
+  @@index([isActive])
+}
+
+model MetalRateHistory {
+  id            String    @id @default(cuid())
+  metalRateId   String
+  metalRate     MetalRate @relation(fields: [metalRateId], references: [id], onDelete: Cascade)
+  
+  oldRate       Decimal   @db.Decimal(10,2)
+  newRate       Decimal   @db.Decimal(10,2)
+  changedBy     String?   @db.VarChar(100)
+  notes         String?   @db.Text
+  createdAt     DateTime  @default(now())
+}
+
+
+// ============================================================
+// GEMSTONE RATES
+// ============================================================
+
+model GemstoneRate {
+  id            String   @id @default(cuid())
+  type          String   @db.VarChar(50)   // "Diamond", "Emerald", "Ruby", "Sapphire", "Pearl"
+  clarity       String   @db.VarChar(50)   // "VVS", "VVS-VS", "VS1", "SI1", "I1"
+  color         String   @db.VarChar(30)   // "D", "E", "E-F", "EF", "F-G", "GH"
+  ratePerCarat  Decimal  @db.Decimal(10,2) // ₹ per carat
+  currency      String   @default("INR") @db.VarChar(3)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  variants      ProductVariant[]
+
+  @@unique([type, clarity, color, currency])
+  @@index([type])
+  @@index([isActive])
+}
+
+// ============================================================
+// GOLD RATE
+// ============================================================
+
+model GoldRate {
+  id          String   @id @default(cuid())
+  karat       Int
+  purity      Float
+  ratePerGram Float
+  currency    String   @default("INR")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([karat, currency])
+  @@index([karat])
+  @@index([isActive])
+}
+
+// ============================================================
+// PRICE RULES & DYNAMIC PRICING
+// ============================================================
+
+model PriceRule {
+  id              String       @id @default(cuid())
+  name            String       @db.VarChar(100)
+  description     String?      @db.Text
+  type            PriceRuleType @default(MARKUP)
+  value           Decimal      @db.Decimal(10,2)
+  priority        Int          @default(0)
+  isActive        Boolean      @default(true)
+  startDate       DateTime?
+  endDate         DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  conditions      Json
+  
+  customerGroups  CustomerGroupPrice[]
+  timeSlots       TimeSlotPrice[]
+  
+  @@index([isActive])
+  @@index([type])
+}
+
+model CustomerGroupPrice {
+  id            String   @id @default(cuid())
+  groupId       String
+  group         CustomerGroup @relation(fields: [groupId], references: [id])
+  priceRuleId   String
+  priceRule     PriceRule @relation(fields: [priceRuleId], references: [id])
+  multiplier    Float    @default(1.0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model TimeSlotPrice {
+  id          String   @id @default(cuid())
+  priceRuleId String
+  priceRule   PriceRule @relation(fields: [priceRuleId], references: [id])
+  dayOfWeek   Int
+  startTime   String   @db.VarChar(5)
+  endTime     String   @db.VarChar(5)
+  multiplier  Float    @default(1.0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model DynamicPrice {
+  id            String   @id @default(cuid())
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  basePrice     Decimal  @db.Decimal(10,2)
+  currentPrice  Decimal  @db.Decimal(10,2)
+  goldRateId    String?
+  goldRate      MetalRate? @relation(fields: [goldRateId], references: [id])
+  markup        Decimal  @default(0) @db.Decimal(5,2)
+  margin        Decimal  @default(0) @db.Decimal(5,2)
+  effectiveDate DateTime @default(now())
+  expiryDate    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([productId])
+  @@index([currentPrice])
+}
+
+// ============================================================
+// ORDER MODELS
+// ============================================================
+
+model Order {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  items       OrderItem[]
+  total       Float
+  status      OrderStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  shippingAddress String
+  phone       String
+  email       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  payment     Payment?
+  couponUsages CouponUsage[]
+  returns     Return[]
+  invoice     Invoice?
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+  quantity    Int
+  price       Float
+}
+
+model Cart {
+  id          String  @id @default(cuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id])
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+  quantity    Int
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Selected options
+  selectedMetal     String?     @default("14")
+  selectedColor     String?     @default("Rose")
+  selectedSize      String?     @default("US 6")
+}
+
+// ============================================================
+// PAYMENT
+// ============================================================
+
+model Payment {
+  id            String    @id @default(cuid())
+  orderId       String    @unique
+  order         Order     @relation(fields: [orderId], references: [id])
+  amount        Decimal   @db.Decimal(10,2)
+  currency      String    @default("INR") @db.VarChar(3)
+  method        PaymentMethod
+  status        PaymentStatus
+  transactionId String?   @db.VarChar(100)
+  paymentIntentId String? @db.VarChar(100)
+  receiptUrl    String?   @db.VarChar(500)
+  failedReason  String?   @db.Text
+  paidAt        DateTime?
+  refundedAt    DateTime?
+  refundAmount  Decimal?  @db.Decimal(10,2)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([orderId])
+  @@index([status])
+}
+
+// ============================================================
+// INVOICE
+// ============================================================
+
+model Invoice {
+  id            String    @id @default(cuid())
+  orderId       String    @unique
+  order         Order     @relation(fields: [orderId], references: [id])
+  invoiceNumber String    @unique @db.VarChar(50)
+  generatedAt   DateTime  @default(now())
+  pdfUrl        String?   @db.VarChar(500)
+  
+  customerName  String
+  customerEmail String
+  customerPhone String?
+  customerAddress String?
+  
+  subtotal      Decimal   @db.Decimal(10,2)
+  discount      Decimal   @default(0) @db.Decimal(10,2)
+  tax           Decimal   @default(0) @db.Decimal(10,2)
+  shipping      Decimal   @default(0) @db.Decimal(10,2)
+  total         Decimal   @db.Decimal(10,2)
+  
+  paymentMethod String?
+  paymentStatus String?
+  gstNumber     String?   @db.VarChar(50)
+  hsnCodes      Json?
+  items         Json?     // Array of invoice items
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ============================================================
+// RETURN & REFUND
+// ============================================================
+
+model Return {
+  id            String    @id @default(cuid())
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id])
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  
+  reason        String    @db.Text
+  status        ReturnStatus @default(PENDING)
+  inspectionResult String? @db.Text
+  
+  refundAmount  Decimal?  @db.Decimal(10,2)
+  refundStatus  RefundStatus @default(PENDING)
+  
+  returnTrackingNumber String? @db.VarChar(100)
+  receivedAt    DateTime?
+  inspectedAt   DateTime?
+  refundedAt    DateTime?
+  
+  items         ReturnItem[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([orderId])
+  @@index([userId])
+  @@index([status])
+}
+
+model ReturnItem {
+  id            String    @id @default(cuid())
+  returnId      String
+  return        Return    @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id])
+  variantId     String?
+  variant       JewelleryVariant? @relation(fields: [variantId], references: [id])
+  quantity      Int
+  price         Decimal   @db.Decimal(10,2)
+  condition     String?   @db.Text
+  isAccepted    Boolean?  @default(false)
+}
+
+// ============================================================
+// COUPON
+// ============================================================
+
+model Coupon {
+  id            String    @id @default(cuid())
+  code          String    @unique @db.VarChar(50)
+  description   String?   @db.Text
+  
+  // Discount details
+  type          CouponType @default(PERCENTAGE)
+  value         Decimal   @db.Decimal(10,2)
+  maxDiscount   Decimal?  @db.Decimal(10,2)
+  minOrder      Decimal?  @db.Decimal(10,2)
+  
+  // Restrictions
+  categoryIds   String[] // Specific categories
+  productIds    String[] // Specific products
+  customerIds   String[] // Specific customers
+  
+  // Usage
+  usageLimit    Int?      @default(1)
+  usedCount     Int       @default(0)
+  perUserLimit  Int?      @default(1)
+  
+  // Dates
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  // Status
+  isActive      Boolean   @default(true)
+  isGlobal      Boolean   @default(false)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Usage records
+  usages        CouponUsage[]
+  
+  @@index([code])
+  @@index([isActive])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+model CouponUsage {
+  id            String    @id @default(cuid())
+  couponId      String
+  coupon        Coupon    @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  orderId       String
+  order         Order     @relation(fields: [orderId], references: [id])
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  discountAmount Decimal   @db.Decimal(10,2)
+  usedAt        DateTime  @default(now())
+}
+
+// ============================================================
+// WISHLIST
+// ============================================================
+
+model Wishlist {
+  id          String  @id @default(cuid())
+  userId      String
+  user        User    @relation(fields: [userId], references: [id])
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+}
+
+model WishlistItem {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId     String?
+  variant       JewelleryVariant? @relation(fields: [variantId], references: [id])
+  addedAt       DateTime  @default(now())
+  
+  @@unique([userId, productId, variantId])
+}
+
+// ============================================================
+// ABANDONED CART
+// ============================================================
+
+model AbandonedCart {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  items         Json      // Cart items
+  subtotal      Decimal   @db.Decimal(10,2)
+  total         Decimal   @db.Decimal(10,2)
+  reminderSent  Boolean   @default(false)
+  reminderSentAt DateTime?
+  recovered     Boolean   @default(false)
+  recoveredAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============================================================
+// BANNER / CMS
+// ============================================================
+
+model Banner {
+  id            String    @id @default(cuid())
+  title         String    @db.VarChar(200)
+  subtitle      String?   @db.VarChar(200)
+  description   String?   @db.Text
+  imageUrl      String    @db.VarChar(500)
+  link          String?   @db.VarChar(500)
+  buttonText    String?   @db.VarChar(50)
+  
+  // Display
+  position      String    @default("HOME") @db.VarChar(50)
+  sortOrder     Int       @default(0)
+  isActive      Boolean   @default(true)
+  
+  // Targeting
+  startDate     DateTime?
+  endDate       DateTime?
+  
+  // Tracking
+  clicks        Int       @default(0)
+  views         Int       @default(0)
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model AuditLog {
+  id            String    @id @default(cuid())
+  adminUserId   String?
+  adminUser     AdminUser? @relation(fields: [adminUserId], references: [id])
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id])
+  
+  action        String    @db.VarChar(50)
+  entity        String    @db.VarChar(50)
+  entityId      String?   @db.VarChar(100)
+  
+  changes       Json?
+  ipAddress     String?   @db.VarChar(50)
+  userAgent     String?   @db.Text
+  
+  createdAt     DateTime  @default(now())
+  
+  @@index([adminUserId])
+  @@index([userId])
+  @@index([entity])
+  @@index([createdAt])
+  @@index([action])
+}
+
+// ============================================================
+// STORE SETTINGS
+// ============================================================
+
+model StoreSettings {
+  id            String    @id @default(cuid())
+  
+  // General Settings
+  storeName     String    @default("Kritya's Jewellery")
+  storeEmail    String    @default("info@kritiyasjewellery.com")
+  storePhone    String?   @default("+91 98765 43210")
+  storeAddress  String?   @default("123 Jewellery Lane, Mumbai, India")
+  currency      String    @default("INR")
+  
+  // Tax & Shipping
+  taxRate       Float     @default(3.0)
+  shippingCost  Float     @default(0)
+  freeShippingAbove Float @default(5000)
+  
+  // Payment Methods
+  paymentMethods Json     @default("[\"COD\", \"CARD\", \"UPI\", \"NETBANKING\"]")
+  
+  // Notifications
+  notificationEmail Boolean @default(true)
+  notificationSMS   Boolean @default(false)
+  
+  // Return Policy
+  returnDays    Int       @default(7)
+  returnPolicy  String?   @db.Text
+  
+  // Contact
+  facebookUrl   String?   @db.VarChar(500)
+  instagramUrl  String?   @db.VarChar(500)
+  twitterUrl    String?   @db.VarChar(500)
+  youtubeUrl    String?   @db.VarChar(500)
+  
+  // SEO
+  metaTitle     String?   @db.VarChar(200)
+  metaDescription String? @db.Text
+  
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ============================================================
+// KARIGAR (NEW)
+// ============================================================
+
+model Karigar {
+  id            String    @id @default(cuid())
+  name          String    @unique @db.VarChar(100)
+  phone         String?   @db.VarChar(20)
+  specialization String?  @db.VarChar(100)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+}
+
+// ============================================================
+// JEWELLERY TYPE (NEW)
+// ============================================================
+
+model JewelleryType {
+  id            String    @id @default(cuid())
+  name          String    @unique @db.VarChar(100)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+}
+
+// ============================================================
+// PRODUCT STYLE (NEW)
+// ============================================================
+
+model ProductStyle {
+  id            String    @id @default(cuid())
+  name          String    @unique @db.VarChar(100)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+}
+
+// ============================================================
+// OCCASION (NEW)
+// ============================================================
+
+model Occasion {
+  id            String    @id @default(cuid())
+  name          String    @unique @db.VarChar(100)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+}
+
+
+
+
+// ============================================================
+// HOMEPAGE CMS — TESTIMONIALS
+// ============================================================
+
+model Testimonial {
+  id            String    @id @default(cuid())
+  name          String    @db.VarChar(100)
+  city          String?   @db.VarChar(100)
+  rating        Int       @default(5)
+  text          String    @db.Text
+  displayOrder  Int       @default(0)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([isActive])
+  @@index([displayOrder])
+}
+
+// ============================================================
+// HOMEPAGE CMS — EDITORIAL BANNER (single row)
+// ============================================================
+
+model HomepageEditorial {
+  id            String    @id @default(cuid())
+  eyebrow       String    @default("Our Story") @db.VarChar(100)
+  heading       String    @default("Heirlooms crafted with intention") @db.VarChar(200)
+  body          String    @default("") @db.Text
+  ctaText       String    @default("Read Our Story") @db.VarChar(50)
+  ctaLink       String    @default("/about") @db.VarChar(500)
+  imageUrl      String?   @db.VarChar(500)
+  statValue     String    @default("25+") @db.VarChar(20)
+  statLabel     String    @default("Years of Trust") @db.VarChar(50)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  PRODUCT_MANAGER
+  ORDER_MANAGER
+  CUSTOMER_SUPPORT
+  ACCOUNTANT
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CARD
+  UPI
+  NETBANKING
+  COD
+}
+
+enum PriceRuleType {
+  MARKUP
+  DISCOUNT
+  DYNAMIC
+  BULK
+  LOYALTY
+  SEASONAL
+}
+
+enum InventoryStatus {
+  IN_STOCK
+  LOW_STOCK
+  OUT_OF_STOCK
+  DISCONTINUED
+  DAMAGED
+  RESERVED
+}
+
+enum AdjustmentType {
+  ADD
+  REMOVE
+  DAMAGE
+  RETURN
+  SOLD
+  RESERVED
+  RELEASED
+  COUNT_ADJUST
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+  FREE_SHIPPING
+}
+
+enum ReturnStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  RECEIVED
+  INSPECTING
+  INSPECTED
+  REFUNDED
+  COMPLETED
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum MetalType {
+  GOLD
+  SILVER
+  PLATINUM
+  PALLADIUM
+  RHODIUM
+}
