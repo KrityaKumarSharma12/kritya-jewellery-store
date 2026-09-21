@@ -1023,7 +1023,7 @@ class AdminService {
 
     const orders = await prisma.order.findMany({
       where: {
-        status: { not: 'CANCELLED' },
+         paymentStatus: 'PAID',
         createdAt: { gte: range.start, lte: range.end },
       },
       include: {
@@ -1034,7 +1034,7 @@ class AdminService {
 
     const prevOrders = await prisma.order.findMany({
       where: {
-        status: { not: 'CANCELLED' },
+         paymentStatus: 'PAID',
         createdAt: { gte: previous.start, lte: previous.end },
       },
       select: { total: true, items: { select: { quantity: true } } },

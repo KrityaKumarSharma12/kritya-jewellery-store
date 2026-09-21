@@ -55,6 +55,39 @@ const Dashboard = () => {
     }
   }, [token]);
 
+  const handleExport = () => {
+    if (!stats) return;
+    const { sales, orders, customers, products } = stats;
+    const rows = [
+      ['Metric', 'Value'],
+      ['Total Sales', sales.total],
+      ['Today Sales', sales.today],
+      ['This Month Sales', sales.monthly],
+      ['Last Month Sales', sales.lastMonth],
+      ['Total Orders', orders.total],
+      ['Pending Orders', orders.pending],
+      ['Completed Orders', orders.completed],
+      ['Cancelled Orders', orders.cancelled],
+      ['Total Customers', customers.total],
+      ['New Customers This Month', customers.newThisMonth],
+      ['Total Products', products.total],
+      ['Low Stock Products', products.lowStock],
+      ['Out of Stock Products', products.outOfStock],
+      ['Exported At', new Date().toISOString()],
+    ];
+    const csv = rows.map((r) => r.map((v) => `"${v}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `kritya-dashboard-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success('Report exported');
+  };
+
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
@@ -117,7 +150,10 @@ const Dashboard = () => {
           >
             <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Refresh
           </button>
-          <button className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg transition flex items-center gap-2 shadow-lg text-xs sm:text-sm">
+          <button
+            onClick={handleExport}
+            className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg transition flex items-center gap-2 shadow-lg text-xs sm:text-sm"
+          >
             <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Export Report
           </button>
         </div>
