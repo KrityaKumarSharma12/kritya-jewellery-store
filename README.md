@@ -1,6 +1,6 @@
 # Kritya's Jewellery Store
 
-A full-stack e-commerce platform for a luxury jewellery brand — built with React, Node.js, PostgreSQL, and Prisma.
+A full-stack e-commerce platform for a luxury jewellery brand — built with React, Node.js, PostgreSQL, Prisma, and ImageKit.
 
 ![Homepage](./frontend/public/kritya-hero-1.png)
 
@@ -15,6 +15,7 @@ A full-stack e-commerce platform for a luxury jewellery brand — built with Rea
 
 ### Admin panel
 - Role-based admin access (Super Admin, Admin, Product Manager, Order Manager, Customer Support, Accountant)
+- Permission-based access control (RBAC) enforced on both frontend and backend
 - Dashboard with sales, orders, and customer analytics
 - Product, category, subcategory, and inventory management
 - Order, return, and payment management
@@ -22,6 +23,7 @@ A full-stack e-commerce platform for a luxury jewellery brand — built with Rea
 - Customer and admin-user management
 - Metal rate and diamond pricing management
 - Invoice generation (PDF)
+- Image uploads served from ImageKit CDN
 
 ## 🛠 Tech Stack
 
@@ -32,17 +34,18 @@ A full-stack e-commerce platform for a luxury jewellery brand — built with Rea
 - **Axios** for HTTP
 - **Lucide** icons
 - **React Hot Toast** for notifications
+- **Swiper** for carousels
 
 ### Backend
 - **Node.js + Express**
 - **PostgreSQL** via **Prisma ORM**
 - **JWT** authentication
 - **Winston** logger
-- **Multer** for file uploads
+- **Multer** for file handling
+- **ImageKit** for image storage and CDN delivery
 - **PDFKit** for invoice generation
 
 ## 📁 Project Structure
-
 kritya-jewellery-store/
 ├── backend/ # Express API + Prisma
 │ ├── prisma/
@@ -50,9 +53,9 @@ kritya-jewellery-store/
 │ │ ├── seed.js
 │ │ └── seed-cms.js
 │ ├── src/
-│ │ ├── config/ # Cache, DB config
+│ │ ├── config/ # ImageKit + cache config
 │ │ ├── controllers/ # Route handlers
-│ │ ├── middleware/ # Auth, validation, upload
+│ │ ├── middleware/ # Auth, RBAC, validation, upload
 │ │ ├── routes/ # API routes
 │ │ ├── services/ # Business logic
 │ │ ├── lib/ # Prisma client, helpers
