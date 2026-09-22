@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
-import { 
-  LayoutDashboard, Package, ShoppingBag, Users, 
-  Settings, BarChart3, Tag, 
-  RefreshCw, FileText, Image,  
+import {
+  LayoutDashboard, Package, ShoppingBag, Users,
+  Settings, BarChart3, Tag,
+  RefreshCw, FileText, Image,
   LogOut, Bell, Menu, X,
   Gem, Activity, Truck, Wallet, ChevronDown,
-  Home, Star, 
-  Clipboard, UserCog, AlertCircle, Eye, Plus
+  Home, Star,
+  Clipboard, UserCog, AlertCircle, Eye, Plus,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
@@ -33,36 +33,70 @@ import AbandonedCart from './admin/AbandonedCart';
 import WishlistManagement from './admin/WishlistManagement';
 import AddProductPage from './admin/AddProductPage';
 
+// ============================================================
+// Menu items — each can declare a `permission` it requires.
+// Items without a `permission` are visible to any admin.
+// ============================================================
+const menuItems = [
+  { id: 'dashboard',      icon: LayoutDashboard, label: 'Dashboard',       path: '/admin' },
+  { id: 'products',       icon: Package,         label: 'Products',        path: '/admin/products',        permission: 'view_product' },
+  { id: 'categories',     icon: Home,            label: 'Categories',      path: '/admin/categories',      permission: 'manage_categories' },
+  { id: 'subcategories',  icon: Clipboard,       label: 'Subcategories',   path: '/admin/subcategories',   permission: 'manage_categories' },
+  { id: 'diamonds',       icon: Gem,             label: 'Diamonds',        path: '/admin/diamonds',        permission: 'view_product' },
+  { id: 'inventory',      icon: Truck,           label: 'Inventory',       path: '/admin/inventory',       permission: 'manage_inventory' },
+  { id: 'metal-rates',    icon: Activity,        label: 'Metal Rates',     path: '/admin/metal-rates',     permission: 'view_product' },
+  { id: 'orders',         icon: ShoppingBag,     label: 'Orders',          path: '/admin/orders',          permission: 'view_order' },
+  { id: 'customers',      icon: Users,           label: 'Customers',       path: '/admin/customers',       permission: 'manage_customers' },
+  { id: 'coupons',        icon: Tag,             label: 'Coupons',         path: '/admin/coupons',         permission: 'manage_coupons' },
+  { id: 'returns',        icon: RefreshCw,       label: 'Returns',         path: '/admin/returns',         permission: 'edit_order' },
+  { id: 'payments',       icon: Wallet,          label: 'Payments',        path: '/admin/payments',        permission: 'view_order' },
+  { id: 'invoices',       icon: FileText,        label: 'Invoices',        path: '/admin/invoices',        permission: 'view_order' },
+  { id: 'wishlist',       icon: Star,            label: 'Wishlist',        path: '/admin/wishlist',        permission: 'view_order' },
+  { id: 'abandoned-cart', icon: AlertCircle,     label: 'Abandoned Cart',  path: '/admin/abandoned-cart',  permission: 'view_order' },
+  { id: 'banners',        icon: Image,           label: 'Banners',         path: '/admin/banners',         permission: 'manage_banners' },
+  { id: 'reports',        icon: BarChart3,       label: 'Reports',         path: '/admin/reports',         permission: 'view_reports' },
+  { id: 'admin-users',    icon: UserCog,         label: 'Admin Users',     path: '/admin/admin-users',     permission: 'manage_users' },
+  { id: 'audit-logs',     icon: Eye,             label: 'Audit Logs',      path: '/admin/audit-logs',      permission: 'manage_users' },
+  { id: 'settings',       icon: Settings,        label: 'Settings',        path: '/admin/settings',        permission: 'manage_settings' },
+  { id: 'add-product',    icon: Plus,            label: 'Add Product',     path: '/admin/products/add-product', permission: 'create_product' },
+];
+
+// ============================================================
+// Route-level permission gate. Renders an "Access Denied" page
+// if the admin lacks the required permission.
+// ============================================================
+const PermissionGate = ({ permission, children }) => {
+  const { hasPermission } = useAuth();
+  if (!hasPermission(permission)) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mb-4">
+          <AlertCircle className="h-8 w-8 text-red-600" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">
+          Access Denied
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400 max-w-md">
+          You don't have permission to view this page. Contact your administrator
+          if you believe this is a mistake.
+        </p>
+      </div>
+    );
+  }
+  return children;
+};
+
 const AdminPanel = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
 
-  const menuItems = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
-    { id: 'products', icon: Package, label: 'Products', path: '/admin/products' },
-    { id: 'categories', icon: Home, label: 'Categories', path: '/admin/categories' },
-    { id: 'subcategories', icon: Clipboard, label: 'Subcategories', path: '/admin/subcategories' },
-    { id: 'diamonds', icon: Gem, label: 'Diamonds', path: '/admin/diamonds' },
-    { id: 'inventory', icon: Truck, label: 'Inventory', path: '/admin/inventory' },
-    { id: 'metal-rates', icon: Activity, label: 'Metal Rates', path: '/admin/metal-rates' },
-    { id: 'orders', icon: ShoppingBag, label: 'Orders', path: '/admin/orders' },
-    { id: 'customers', icon: Users, label: 'Customers', path: '/admin/customers' },
-    { id: 'coupons', icon: Tag, label: 'Coupons', path: '/admin/coupons' },
-    { id: 'returns', icon: RefreshCw, label: 'Returns', path: '/admin/returns' },
-    { id: 'payments', icon: Wallet, label: 'Payments', path: '/admin/payments' },
-    { id: 'invoices', icon: FileText, label: 'Invoices', path: '/admin/invoices' },
-    { id: 'wishlist', icon: Star, label: 'Wishlist', path: '/admin/wishlist' },
-    { id: 'abandoned-cart', icon: AlertCircle, label: 'Abandoned Cart', path: '/admin/abandoned-cart' },
-    { id: 'banners', icon: Image, label: 'Banners', path: '/admin/banners' },
-    { id: 'reports', icon: BarChart3, label: 'Reports', path: '/admin/reports' },
-    { id: 'admin-users', icon: UserCog, label: 'Admin Users', path: '/admin/admin-users' },
-    { id: 'audit-logs', icon: Eye, label: 'Audit Logs', path: '/admin/audit-logs' },
-    { id: 'settings', icon: Settings, label: 'Settings', path: '/admin/settings' },
-    { id: 'add-product', icon: Plus, label: 'Add Product', path: '/admin/products/add-product' },
-  ];
+  // Filter menu items by permission
+  const visibleMenuItems = menuItems.filter(
+    (item) => !item.permission || hasPermission(item.permission)
+  );
 
   const handleLogout = () => {
     logout();
@@ -71,7 +105,6 @@ const AdminPanel = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-bg flex">
-      {/* Backdrop for mobile — shown when sidebar is open on small screens */}
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
@@ -81,7 +114,7 @@ const AdminPanel = () => {
       )}
 
       {/* Sidebar */}
-      <div 
+      <div
         className={`
           ${sidebarOpen ? 'w-64 translate-x-0' : 'w-64 lg:w-20 -translate-x-full lg:translate-x-0'}
           bg-white dark:bg-dark-card shadow-2xl min-h-screen fixed left-0 top-0 z-40 transition-all duration-300 overflow-y-auto
@@ -106,7 +139,6 @@ const AdminPanel = () => {
           </div>
         </div>
 
-        {/* Close button — only visible on mobile */}
         <button
           onClick={() => setSidebarOpen(false)}
           className="lg:hidden absolute top-4 right-4 p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-lg transition"
@@ -115,13 +147,13 @@ const AdminPanel = () => {
           <X className="h-5 w-5" />
         </button>
 
-        {/* Navigation */}
+        {/* Navigation — filtered by permissions */}
         <nav
           className={`space-y-1 max-h-[calc(100vh-200px)] overflow-y-auto transition-all duration-300 ${
             sidebarOpen ? 'p-4' : 'lg:p-2'
           }`}
         >
-          {menuItems.map((item) => {
+          {visibleMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
@@ -130,7 +162,6 @@ const AdminPanel = () => {
                 to={item.path}
                 onClick={() => {
                   setActiveTab(item.id);
-                  // Auto-close sidebar on mobile after click
                   if (window.innerWidth < 1024) setSidebarOpen(false);
                 }}
                 title={!sidebarOpen ? item.label : undefined}
@@ -149,7 +180,7 @@ const AdminPanel = () => {
           })}
         </nav>
 
-        {/* Bottom — Logout */}
+        {/* Logout */}
         <div
           className={`absolute bottom-0 left-0 right-0 border-t border-gray-100 dark:border-dark-border bg-white dark:bg-dark-card transition-all duration-300 ${
             sidebarOpen ? 'p-4' : 'lg:p-2'
@@ -170,7 +201,7 @@ const AdminPanel = () => {
 
       {/* Main Content */}
       <div className={`${sidebarOpen ? 'ml-0 lg:ml-64' : 'ml-0 lg:ml-20'} flex-1 transition-all duration-300 min-w-0`}>
-        {/* Top Bar */}
+        {/* Top Bar — unchanged from your file */}
         <div className="sticky top-0 z-20 bg-white dark:bg-dark-card shadow-sm dark:shadow-lg dark:shadow-black/20 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center gap-2 border-b border-transparent dark:border-dark-border">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button
@@ -188,9 +219,7 @@ const AdminPanel = () => {
           </div>
 
           <div className="flex items-center gap-1 sm:gap-2 md:gap-3 flex-shrink-0">
-            {/* Theme Toggle */}
             <ThemeToggle />
-
             <button className="relative p-2 hover:bg-gray-100 dark:hover:bg-dark-bg rounded-lg transition">
               <Bell className="h-5 w-5 text-gray-600 dark:text-gray-300" />
               <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
@@ -208,7 +237,7 @@ const AdminPanel = () => {
                 </div>
                 <div className="hidden md:block text-left">
                   <p className="text-sm font-medium text-gray-800 dark:text-white">{user?.name || 'Admin'}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Administrator</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{user?.role?.replace(/_/g, ' ') || 'Administrator'}</p>
                 </div>
                 <ChevronDown className="hidden md:block h-4 w-4 text-gray-500 dark:text-gray-400" />
               </button>
@@ -234,31 +263,31 @@ const AdminPanel = () => {
           </div>
         </div>
 
-        {/* Page Content */}
+        {/* Page Content — with permission gates */}
         <div className="p-4 sm:p-6 lg:p-8">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/products" element={<ProductManagement />} />
-            <Route path="/categories" element={<CategoryManagement />} />
-            <Route path="/subcategories" element={<SubcategoryManagement />} />
-            <Route path="/diamonds" element={<DiamondManagement />} />
-            <Route path="/inventory" element={<InventoryManagement />} />
-            <Route path="/metal-rates" element={<MetalRateManagement />} />
-            <Route path="/orders" element={<OrderManagement />} />
-            <Route path="/customers" element={<CustomerManagement />} />
-            <Route path="/coupons" element={<CouponManagement />} />
-            <Route path="/returns" element={<ReturnManagement />} />
-            <Route path="/payments" element={<PaymentManagement />} />
-            <Route path="/invoices" element={<InvoiceManagement />} />
-            <Route path="/wishlist" element={<WishlistManagement />} />
-            <Route path="/abandoned-cart" element={<AbandonedCart />} />
-            <Route path="/banners" element={<BannerManagement />} />
-            <Route path="/reports" element={<ReportAnalytics />} />
-            <Route path="/admin-users" element={<AdminUserManagement />} />
-            <Route path="/audit-logs" element={<AuditLogs />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/products/add-product" element={<AddProductPage />} />
-            <Route path="/products/edit/:id" element={<AddProductPage />} />
+            <Route path="/products" element={<PermissionGate permission="view_product"><ProductManagement /></PermissionGate>} />
+            <Route path="/categories" element={<PermissionGate permission="manage_categories"><CategoryManagement /></PermissionGate>} />
+            <Route path="/subcategories" element={<PermissionGate permission="manage_categories"><SubcategoryManagement /></PermissionGate>} />
+            <Route path="/diamonds" element={<PermissionGate permission="view_product"><DiamondManagement /></PermissionGate>} />
+            <Route path="/inventory" element={<PermissionGate permission="manage_inventory"><InventoryManagement /></PermissionGate>} />
+            <Route path="/metal-rates" element={<PermissionGate permission="view_product"><MetalRateManagement /></PermissionGate>} />
+            <Route path="/orders" element={<PermissionGate permission="view_order"><OrderManagement /></PermissionGate>} />
+            <Route path="/customers" element={<PermissionGate permission="manage_customers"><CustomerManagement /></PermissionGate>} />
+            <Route path="/coupons" element={<PermissionGate permission="manage_coupons"><CouponManagement /></PermissionGate>} />
+            <Route path="/returns" element={<PermissionGate permission="edit_order"><ReturnManagement /></PermissionGate>} />
+            <Route path="/payments" element={<PermissionGate permission="view_order"><PaymentManagement /></PermissionGate>} />
+            <Route path="/invoices" element={<PermissionGate permission="view_order"><InvoiceManagement /></PermissionGate>} />
+            <Route path="/wishlist" element={<PermissionGate permission="view_order"><WishlistManagement /></PermissionGate>} />
+            <Route path="/abandoned-cart" element={<PermissionGate permission="view_order"><AbandonedCart /></PermissionGate>} />
+            <Route path="/banners" element={<PermissionGate permission="manage_banners"><BannerManagement /></PermissionGate>} />
+            <Route path="/reports" element={<PermissionGate permission="view_reports"><ReportAnalytics /></PermissionGate>} />
+            <Route path="/admin-users" element={<PermissionGate permission="manage_users"><AdminUserManagement /></PermissionGate>} />
+            <Route path="/audit-logs" element={<PermissionGate permission="manage_users"><AuditLogs /></PermissionGate>} />
+            <Route path="/settings" element={<PermissionGate permission="manage_settings"><SettingsPage /></PermissionGate>} />
+            <Route path="/products/add-product" element={<PermissionGate permission="create_product"><AddProductPage /></PermissionGate>} />
+            <Route path="/products/edit/:id" element={<PermissionGate permission="edit_product"><AddProductPage /></PermissionGate>} />
           </Routes>
         </div>
       </div>

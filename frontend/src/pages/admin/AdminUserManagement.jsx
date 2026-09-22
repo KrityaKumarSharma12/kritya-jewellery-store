@@ -21,11 +21,27 @@ const AdminUserManagement = () => {
   });
 
   const roles = ['SUPER_ADMIN', 'ADMIN', 'PRODUCT_MANAGER', 'ORDER_MANAGER', 'CUSTOMER_SUPPORT', 'ACCOUNTANT'];
+
+  // ✅ Updated: granular permission list, matches backend requirePermission() calls
   const allPermissions = [
-    'create_product', 'edit_product', 'delete_product', 'view_product',
-    'create_order', 'edit_order', 'delete_order', 'view_order',
-    'manage_inventory', 'manage_metal_rates', 'manage_coupons',
-    'manage_customers', 'manage_users', 'view_reports', 'manage_settings',
+    // Products
+    'view_product', 'create_product', 'edit_product', 'delete_product',
+    // Inventory & Metal
+    'manage_inventory', 'manage_metal_rates',
+    // Orders
+    'view_order', 'edit_order',
+    // Customers
+    'manage_customers',
+    // Commerce
+    'manage_coupons',
+    // Content / CMS
+    'manage_categories', 'manage_banners', 'manage_cms',
+    // Reports
+    'view_reports',
+    // Users
+    'manage_users',
+    // Settings
+    'manage_settings',
   ];
 
   const fetchAdminUsers = async () => {

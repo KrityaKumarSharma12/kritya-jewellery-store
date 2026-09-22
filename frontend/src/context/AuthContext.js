@@ -1,7 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
 
-// ✅ FIX: Single source of truth for "who counts as an admin"
+// ✅ Single source of truth for "who counts as an admin"
 // Keep this in sync with your backend (middleware/auth.js) and Prisma AdminRole enum.
 export const ADMIN_ROLES = [
   'SUPER_ADMIN',
@@ -11,6 +11,10 @@ export const ADMIN_ROLES = [
   'CUSTOMER_SUPPORT',
   'ACCOUNTANT',
 ];
+
+// Roles that bypass every permission check on both frontend and backend.
+// Everyone else must have the specific permission in their `permissions` array.
+export const BYPASS_ROLES = ['SUPER_ADMIN', 'ADMIN'];
 
 const AuthContext = createContext();
 
@@ -111,6 +115,28 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ============================================================
+  // RBAC helpers
+  // ============================================================
+
+  // Privileged roles bypass every permission check
+  const isBypassRole = BYPASS_ROLES.includes(user?.role);
+
+  /**
+   * Check whether the current admin has a specific permission.
+   * SUPER_ADMIN and ADMIN always return true.
+   * Everyone else must have the permission in their `permissions` array.
+   *
+   * @param {string} key - e.g. 'view_product', 'manage_users'
+   * @returns {boolean}
+   */
+  const hasPermission = (key) => {
+    if (!user) return false;
+    if (isBypassRole) return true;
+    const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+    return permissions.includes(key);
+  };
+
   const value = {
     user,
     token,
@@ -122,11 +148,13 @@ export const AuthProvider = ({ children }) => {
     refreshUser,
     setUser: updateUser,
     isAuthenticated: !!user,
-    // ✅ FIX: was `user?.role === 'ADMIN'` — now checks the full admin-role list
+    // Admin roles
     isAdmin: ADMIN_ROLES.includes(user?.role),
-    // ✅ BONUS: handy helpers you'll likely want later
     isSuperAdmin: user?.role === 'SUPER_ADMIN',
     adminRole: ADMIN_ROLES.includes(user?.role) ? user.role : null,
+    // ✅ RBAC helpers
+    hasPermission,
+    isBypassRole,
   };
 
   return (
