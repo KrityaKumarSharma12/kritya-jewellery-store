@@ -31,7 +31,6 @@ export const CartProvider = ({ children }) => {
       setSettings(response.data);
     } catch (error) {
       console.error('Error fetching settings:', error);
-      // Fallback settings
       setSettings({
         taxRate: 3,
         shippingCost: 0,
@@ -65,7 +64,6 @@ export const CartProvider = ({ children }) => {
     }
   }, [user, fetchCart, fetchSettings]);
 
-  // ⭐ Fetch available coupons (public endpoint)
   const fetchAvailableCoupons = useCallback(async () => {
     try {
       const response = await axios.get('http://localhost:5000/api/coupons/available');
@@ -76,7 +74,6 @@ export const CartProvider = ({ children }) => {
     }
   }, []);
 
-  // ⭐ Apply a coupon — validates with backend and stores it
   const applyCoupon = async (code, subtotalOverride) => {
     setCouponError('');
 
@@ -108,7 +105,6 @@ export const CartProvider = ({ children }) => {
         maxDiscount: coupon.maxDiscount,
         minOrder: coupon.minOrder,
         isGlobal: coupon.isGlobal,
-        // Precomputed values for the current subtotal
         discount,
         freeShipping,
       });
@@ -122,19 +118,16 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  // ⭐ Remove the applied coupon
   const removeCoupon = () => {
     setAppliedCoupon(null);
     setCouponError('');
   };
 
-  // ⭐ Clear the entire cart AND any applied coupon
   const clearCartAndCoupon = async () => {
     await clearCart();
     removeCoupon();
   };
 
-  // ⭐ Compute discount for the current subtotal from the applied coupon
   const getDiscount = () => {
     if (!appliedCoupon) return 0;
 
@@ -158,12 +151,10 @@ export const CartProvider = ({ children }) => {
     return Math.round(discount * 100) / 100;
   };
 
-  // ⭐ Does the current coupon provide free shipping?
   const hasFreeShippingFromCoupon = () => {
     return appliedCoupon?.type === 'FREE_SHIPPING';
   };
 
-  // Calculate subtotal (unchanged)
   const getSubtotal = () => {
     return cartItems.reduce((sum, item) => {
       const price = item.product?.price || 0;
@@ -171,16 +162,16 @@ export const CartProvider = ({ children }) => {
     }, 0);
   };
 
-  // Calculate tax — now on discounted subtotal
+  // ✅ FIX: Extract GST that's already inside the price (inclusive model).
   const getTax = () => {
     const subtotal = getSubtotal();
     const discount = getDiscount();
     const discountedSubtotal = Math.max(0, subtotal - discount);
     const taxRate = settings?.taxRate || 3;
-    return (discountedSubtotal * taxRate) / 100;
+    if (discountedSubtotal <= 0) return 0;
+    return discountedSubtotal - discountedSubtotal / (1 + taxRate / 100);
   };
 
-  // Calculate shipping — respects coupon free shipping
   const getShipping = () => {
     const subtotal = getSubtotal();
     const discount = getDiscount();
@@ -193,16 +184,14 @@ export const CartProvider = ({ children }) => {
     return shippingCost;
   };
 
-  // Calculate total — includes discount
+  // ✅ FIX: Do NOT add tax on top — price is GST-inclusive.
   const getTotal = () => {
     const subtotal = getSubtotal();
     const discount = getDiscount();
-    const tax = getTax();
     const shipping = getShipping();
-    return Math.max(0, subtotal - discount) + tax + shipping;
+    return Math.max(0, subtotal - discount) + shipping;
   };
 
-  // Free shipping eligibility
   const isEligibleForFreeShipping = () => {
     if (hasFreeShippingFromCoupon()) return true;
     const subtotal = getSubtotal();
@@ -222,7 +211,7 @@ export const CartProvider = ({ children }) => {
     return remaining > 0 ? remaining : 0;
   };
 
-  // Full price breakdown — now includes discount
+  // ✅ FIX: total = discountedSubtotal + shipping (no added tax).
   const getPriceBreakdown = () => {
     const subtotal = getSubtotal();
     const discount = getDiscount();
@@ -230,7 +219,7 @@ export const CartProvider = ({ children }) => {
     const taxRate = settings?.taxRate || 3;
     const tax = getTax();
     const shipping = getShipping();
-    const total = discountedSubtotal + tax + shipping;
+    const total = discountedSubtotal + shipping;
 
     return {
       subtotal,
@@ -347,7 +336,6 @@ export const CartProvider = ({ children }) => {
   };
 
   const value = {
-    // Cart
     cartItems,
     loading,
     settings,
@@ -357,7 +345,6 @@ export const CartProvider = ({ children }) => {
     clearCart,
     fetchCart,
 
-    // Coupons ⭐
     appliedCoupon,
     couponError,
     availableCoupons,
@@ -366,7 +353,6 @@ export const CartProvider = ({ children }) => {
     fetchAvailableCoupons,
     clearCartAndCoupon,
 
-    // Pricing
     getTotalItems,
     getTotalPrice,
     getSubtotal,

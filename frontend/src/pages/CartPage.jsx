@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   Trash2, Minus, Plus, ShoppingBag, ArrowLeft, 
-  Truck, Shield, Gem, Award, Info, Percent,
+  Truck, Shield, Gem, Award,
   CheckCircle, Tag, Ticket, X, RefreshCw,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
@@ -29,7 +29,6 @@ const CartPage = () => {
 
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
-  const [showDetails, setShowDetails] = useState(false);
   const [couponInput, setCouponInput] = useState('');
   const [applying, setApplying] = useState(false);
   const [showOffers, setShowOffers] = useState(false);
@@ -328,23 +327,6 @@ const CartPage = () => {
                 </div>
               )}
 
-              {/* Tax */}
-              <div className="flex justify-between items-center gap-2 text-sm sm:text-base">
-                <div className="flex items-center gap-1">
-                  <span className="text-gray-600 dark:text-gray-400">GST ({breakdown.taxRate}%)</span>
-                  <button 
-                    onClick={() => setShowDetails(!showDetails)}
-                    className="text-gray-400 hover:text-gray-600"
-                    aria-label="Toggle price details"
-                  >
-                    <Info className="h-3 w-3" />
-                  </button>
-                </div>
-                <span className="font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                  ₹{breakdown.tax.toFixed(2)}
-                </span>
-              </div>
-
               {/* Shipping */}
               <div className="flex justify-between items-center gap-2 text-sm sm:text-base">
                 <span className="text-gray-600 dark:text-gray-400">Shipping</span>
@@ -369,41 +351,6 @@ const CartPage = () => {
                   Inclusive of all taxes
                 </p>
               </div>
-
-              {/* Detailed Breakdown (Toggle) */}
-              {showDetails && (
-                <div className="mt-4 p-3 sm:p-4 bg-gray-50 dark:bg-dark-bg rounded-lg border border-gray-200 dark:border-dark-border">
-                  <h3 className="font-semibold text-sm sm:text-base text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                    <Percent className="h-4 w-4" /> Price Breakdown
-                  </h3>
-                  <div className="space-y-2 text-xs sm:text-sm">
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-500">Subtotal</span>
-                      <span className="whitespace-nowrap">₹{breakdown.subtotal.toFixed(2)}</span>
-                    </div>
-                    {breakdown.discount > 0 && (
-                      <div className="flex justify-between text-green-600 gap-2">
-                        <span>Discount</span>
-                        <span className="whitespace-nowrap">− ₹{breakdown.discount.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-500">GST @ {breakdown.taxRate}%</span>
-                      <span className="whitespace-nowrap">₹{breakdown.tax.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-500">Shipping</span>
-                      <span className={breakdown.isFreeShipping ? 'text-green-600 whitespace-nowrap' : 'whitespace-nowrap'}>
-                        {breakdown.isFreeShipping ? 'FREE' : `₹${breakdown.shipping.toFixed(2)}`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-t border-gray-200 dark:border-dark-border pt-2 font-bold gap-2">
-                      <span>Total</span>
-                      <span className="text-gold-600 whitespace-nowrap">₹{breakdown.total.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             <button

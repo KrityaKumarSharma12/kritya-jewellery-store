@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   CreditCard, Wallet, Truck, Check, 
   Shield, Gem, Award, Package, 
-  DollarSign, Percent, Info, ChevronDown,
-  ChevronUp, MapPin, Phone, Tag,
+  DollarSign,  Info, 
+ MapPin, Phone, Tag,
 } from 'lucide-react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -499,50 +499,9 @@ const PaymentPage = () => {
                 </p>
               </div>
 
-              <button
-                onClick={() => setShowDetails(!showDetails)}
-                className="w-full flex items-center justify-center gap-1 text-sm text-gold-600 hover:text-gold-700 py-2"
-              >
-                {showDetails ? (
-                  <>Hide Details <ChevronUp className="h-4 w-4" /></>
-                ) : (
-                  <>Show Price Breakdown <ChevronDown className="h-4 w-4" /></>
-                )}
-              </button>
+              
 
-              {showDetails && (
-                <div className="p-3 sm:p-4 bg-gray-50 dark:bg-dark-bg rounded-lg border border-gray-200 dark:border-dark-border">
-                  <h3 className="font-semibold text-sm sm:text-base text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                    <Percent className="h-4 w-4" /> Detailed Breakdown
-                  </h3>
-                  <div className="space-y-2 text-xs sm:text-sm">
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-500">Subtotal</span>
-                      <span className="whitespace-nowrap">₹{breakdown.subtotal.toFixed(2)}</span>
-                    </div>
-                    {breakdown.discount > 0 && (
-                      <div className="flex justify-between text-green-600 gap-2">
-                        <span>Discount{breakdown.couponCode ? ` (${breakdown.couponCode})` : ''}</span>
-                        <span className="whitespace-nowrap">− ₹{breakdown.discount.toFixed(2)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-500">GST @ {breakdown.taxRate}%</span>
-                      <span className="whitespace-nowrap">₹{breakdown.tax.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span className="text-gray-500">Shipping Charges</span>
-                      <span className={breakdown.isFreeShipping ? 'text-green-600 whitespace-nowrap' : 'whitespace-nowrap'}>
-                        {breakdown.isFreeShipping ? 'FREE' : `₹${breakdown.shipping.toFixed(2)}`}
-                      </span>
-                    </div>
-                    <div className="flex justify-between border-t border-gray-200 dark:border-dark-border pt-2 font-bold gap-2">
-                      <span>Grand Total</span>
-                      <span className="text-gold-600 whitespace-nowrap">₹{breakdown.total.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+              
             </div>
 
             <button

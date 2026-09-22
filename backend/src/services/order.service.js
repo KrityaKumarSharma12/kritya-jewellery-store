@@ -104,15 +104,25 @@ class OrderService {
     }
 
     // 5. Compute totals
+    //
+    // NOTE: product.price ALREADY includes GST (the product page shows
+    // "Inclusive of all taxes"). We do NOT add tax on top of the subtotal —
+    // we only extract the included portion for invoices/reports.
+    //
+    // Correct math:
+    //   customer total = discountedSubtotal + shipping
+    //   embedded tax   = discountedSubtotal − (discountedSubtotal / (1 + rate/100))
     const discountedSubtotal = Math.max(0, subtotal - discount);
-    const tax = (discountedSubtotal * taxRate) / 100;
 
     let shipping = shippingCost;
     if (discountedSubtotal >= freeShippingAbove || freeShipping) {
       shipping = 0;
     }
 
-    const total = discountedSubtotal + tax + shipping;
+    const total = discountedSubtotal + shipping;
+
+    // Extract the GST that's already inside the price (record-keeping only).
+    const tax = discountedSubtotal - discountedSubtotal / (1 + taxRate / 100);
 
     // 6. Transaction: create order + items + payment + coupon usage
     const order = await prisma.$transaction(async (tx) => {
@@ -223,7 +233,6 @@ class OrderService {
   }
 
   // ============== GET USER ORDERS ==============
-  // ⭐ UPDATED: now includes returns so frontend can show badge / hide button
   async getUserOrders(userId) {
     const orders = await prisma.order.findMany({
       where: { userId },
@@ -315,7 +324,6 @@ class OrderService {
       throw err;
     }
 
-    // Restore stock
     for (const item of order.items) {
       await prisma.product.update({
         where: { id: item.productId },
@@ -351,7 +359,6 @@ class OrderService {
       throw err;
     }
 
-    // 1. Fetch the order (must belong to user, must be DELIVERED)
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
@@ -384,7 +391,6 @@ class OrderService {
       throw err;
     }
 
-    // 2. Check for existing active return
     const ACTIVE_STATUSES = ['PENDING', 'APPROVED', 'RECEIVED', 'INSPECTING', 'INSPECTED'];
     const existingActive = order.returns.find((r) =>
       ACTIVE_STATUSES.includes(r.status)
@@ -398,7 +404,6 @@ class OrderService {
       throw err;
     }
 
-    // 3. Validate each item belongs to the order + isn't already returned
     const previouslyReturnedProductIds = new Set();
     order.returns.forEach((ret) => {
       if (ret.status === 'COMPLETED') {
@@ -443,20 +448,17 @@ class OrderService {
       });
     }
 
-    // 4. Compute refund amount (sum of price × qty for returned items)
     const refundAmount = returnItems.reduce(
       (sum, it) => sum + it.price * it.quantity,
       0
     );
 
-    // 5. Create the return in a transaction
     const newReturn = await prisma.$transaction(async (tx) => {
       const created = await tx.return.create({
         data: {
           orderId: order.id,
           userId,
           reason,
-          
           status: 'PENDING',
           refundAmount,
           refundStatus: 'PENDING',
