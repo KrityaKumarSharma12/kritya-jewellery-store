@@ -8,22 +8,23 @@ A full-stack e-commerce platform for a luxury jewellery brand — built with Rea
 
 ### Customer-facing
 - Browse collections, categories, and products with filters
-- Product detail pages with images, pricing, and inventory status
-- Shopping cart, wishlist, and secure checkout
+- Product detail pages with images, dynamic pricing, and inventory status
+- Shopping cart, wishlist, and secure checkout with coupon support
 - User authentication (register / login / forgot password)
 - Customer profile with order history and return requests
 
 ### Admin panel
-- Role-based admin access (Super Admin, Admin, Product Manager, Order Manager, Customer Support, Accountant)
-- Permission-based access control (RBAC) enforced on both frontend and backend
+- **Role-based access control (RBAC)** — 6 admin roles with granular, per-user permissions enforced on both frontend and backend
+- **Homepage CMS with live preview** — manage banners, categories, collections, testimonials, and editorial content and see the changes as you type
 - Dashboard with sales, orders, and customer analytics
 - Product, category, subcategory, and inventory management
 - Order, return, and payment management
 - Coupon and banner management
 - Customer and admin-user management
 - Metal rate and diamond pricing management
-- Invoice generation (PDF)
-- Image uploads served from ImageKit CDN
+- GST-compliant invoicing with auto-generated PDF invoices
+- **ImageKit-powered image uploads** — CDN-served, auto-optimized
+- Tawk.to live chat widget for customer support
 
 ## 🛠 Tech Stack
 
@@ -35,11 +36,12 @@ A full-stack e-commerce platform for a luxury jewellery brand — built with Rea
 - **Lucide** icons
 - **React Hot Toast** for notifications
 - **Swiper** for carousels
+- **Recharts** for analytics charts
 
 ### Backend
 - **Node.js + Express**
 - **PostgreSQL** via **Prisma ORM**
-- **JWT** authentication
+- **JWT** authentication with role-based middleware
 - **Winston** logger
 - **Multer** for file handling
 - **ImageKit** for image storage and CDN delivery
