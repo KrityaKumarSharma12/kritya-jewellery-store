@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Edit, Trash2, Image as ImageIcon, X, RefreshCw,
   Calendar, Link as LinkIcon, Download, Upload, GripVertical,
-  Eye, CheckCircle2, Clock, Ban, TrendingUp,
+  Eye, EyeOff, CheckCircle2, Clock, Ban, TrendingUp,
   MousePointerClick, LayoutGrid, Quote, Star, BookOpen, ArrowRight,
 } from 'lucide-react';
 import axios from 'axios';
@@ -46,6 +46,267 @@ const emptyForm = {
   title: '', subtitle: '', description: '', imageUrl: '',
   link: '', buttonText: '', position: 'HOME', sortOrder: 0,
   isActive: true, startDate: '', endDate: '',
+};
+
+/* =================================================================== */
+/*  Preview shell — side panel with Show/Hide on mobile               */
+/* =================================================================== */
+
+const PreviewPanel = ({ title, children, emptyText = 'Nothing to preview yet' }) => {
+  const [open, setOpen] = useState(true);
+  const isEmpty = !children;
+
+  return (
+    <div className="bg-white dark:bg-dark-card rounded-2xl shadow-lg overflow-hidden lg:sticky lg:top-20">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-dark-border gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Eye className="h-4 w-4 text-gold-600 flex-shrink-0" />
+          <p className="text-xs uppercase tracking-[0.15em] text-gray-500 dark:text-gray-400 font-semibold truncate">
+            {title}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="lg:hidden text-xs text-gold-600 hover:text-gold-700 flex items-center gap-1 flex-shrink-0"
+          aria-label={open ? 'Hide preview' : 'Show preview'}
+        >
+          {open ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+          {open ? 'Hide' : 'Show'}
+        </button>
+      </div>
+
+      {open && (
+        <div className="p-3 sm:p-4 bg-gray-50/50 dark:bg-dark-bg/30">
+          <p className="text-[10px] text-gray-400 mb-3 text-center uppercase tracking-widest">
+            How it looks on homepage
+          </p>
+          {isEmpty ? (
+            <div className="flex items-center justify-center py-8 text-gray-400 text-sm">
+              {emptyText}
+            </div>
+          ) : (
+            children
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* =================================================================== */
+/*  Preview: Banner (hero-style)                                       */
+/* =================================================================== */
+
+const PreviewBannerCard = ({ banner }) => {
+  if (!banner) return null;
+  const img = normalizeImage(banner.imageUrl);
+
+  return (
+    <div className="space-y-3">
+      <div className="relative aspect-[16/9] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800">
+        {img ? (
+          <img
+            src={img}
+            alt={banner.title || 'Banner'}
+            className="absolute inset-0 w-full h-full object-cover"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
+            <ImageIcon className="h-8 w-8" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/25 to-transparent" />
+
+        <div className="absolute inset-0 flex items-center">
+          <div className="px-4 sm:px-5 max-w-[85%] text-white">
+            <span className="inline-flex items-center gap-1 bg-gold-600 px-2 py-0.5 rounded-full text-[9px] font-semibold mb-2">
+              <Star className="h-2.5 w-2.5" /> New Collection
+            </span>
+            <p className="font-playfair text-base sm:text-lg font-bold leading-tight line-clamp-2">
+              {banner.title || 'Your banner title'}
+            </p>
+            {banner.subtitle && (
+              <p className="text-xs text-white/85 mt-1 line-clamp-2">{banner.subtitle}</p>
+            )}
+            {banner.buttonText && (
+              <div className="mt-2 inline-flex items-center gap-1 bg-gold-600 px-3 py-1 rounded-lg text-[10px] font-semibold">
+                {banner.buttonText} <ArrowRight className="h-3 w-3" />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Meta line — helpful for admin */}
+      <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5 px-1">
+        <p><span className="text-gray-400">Position:</span> {banner.position || 'HOME'}</p>
+        {banner.link && <p className="truncate"><span className="text-gray-400">Links to:</span> {banner.link}</p>}
+      </div>
+    </div>
+  );
+};
+
+/* =================================================================== */
+/*  Preview: Category                                                  */
+/* =================================================================== */
+
+const PreviewCategoryCard = ({ category }) => {
+  if (!category) return null;
+
+  return (
+    <div className="bg-white dark:bg-dark-card rounded-xl border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm">
+      <div className="aspect-square bg-gray-100 dark:bg-gray-800 relative">
+        {category.image ? (
+          <img
+            src={normalizeImage(category.image)}
+            alt={category.name}
+            className="w-full h-full object-cover"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+          />
+        ) : (
+          <div
+            className="w-full h-full flex items-center justify-center"
+            style={{ background: 'linear-gradient(135deg, #C9A227, #F5EFE3)' }}
+          >
+            <span className="font-playfair text-white/90 text-lg text-center px-2">
+              {category.name}
+            </span>
+          </div>
+        )}
+        {category.image && (
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent p-2 pt-6">
+            <p className="font-playfair text-sm text-white truncate">{category.name}</p>
+          </div>
+        )}
+      </div>
+      <div className="px-2 py-1.5 text-[10px] text-gray-400 text-center">
+        /{category.slug}
+      </div>
+    </div>
+  );
+};
+
+/* =================================================================== */
+/*  Preview: Collection                                                */
+/* =================================================================== */
+
+const PreviewCollectionCard = ({ collection }) => {
+  if (!collection) return null;
+
+  return (
+    <div className="rounded-xl overflow-hidden shadow-md">
+      <div
+        className="aspect-[4/5] flex items-end p-3 relative"
+        style={
+          !collection.image
+            ? { background: `linear-gradient(160deg, ${collection.color || '#C9A227'}, #1a1a1a)` }
+            : undefined
+        }
+      >
+        {collection.image && (
+          <>
+            <img
+              src={normalizeImage(collection.image)}
+              alt={collection.name}
+              className="absolute inset-0 w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+          </>
+        )}
+        <div className="relative text-white min-w-0">
+          <p className="text-[9px] uppercase tracking-[0.2em] text-white/70">Collection</p>
+          <p className="font-playfair text-base mt-0.5 truncate">{collection.name}</p>
+          <span className="inline-flex items-center text-white/90 text-[10px] mt-1">
+            Explore <ArrowRight className="ml-1 h-3 w-3" />
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* =================================================================== */
+/*  Preview: Testimonial                                               */
+/* =================================================================== */
+
+const PreviewTestimonialCard = ({ testimonial }) => {
+  if (!testimonial) return null;
+
+  return (
+    <div className="bg-white dark:bg-dark-card rounded-xl border border-gray-100 dark:border-dark-border p-4 shadow-sm relative">
+      <Quote className="absolute top-3 right-3 h-5 w-5 text-gold-200 dark:text-gold-900/40" />
+
+      <div className="flex gap-0.5 text-gold-500">
+        {Array.from({ length: 5 }).map((_, k) => (
+          <Star
+            key={k}
+            className="h-3 w-3"
+            fill={k < (testimonial.rating || 5) ? 'currentColor' : 'none'}
+            stroke={k < (testimonial.rating || 5) ? 'currentColor' : '#D1D5DB'}
+          />
+        ))}
+      </div>
+
+      <p className="mt-3 text-xs text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4">
+        "{testimonial.text || 'Customer quote will appear here...'}"
+      </p>
+
+      <p className="mt-3 text-xs font-semibold text-gray-800 dark:text-white truncate">
+        {testimonial.name || 'Customer name'}
+        {testimonial.city && <span className="text-gray-400 font-normal"> · {testimonial.city}</span>}
+      </p>
+    </div>
+  );
+};
+
+/* =================================================================== */
+/*  Preview: Editorial                                                 */
+/* =================================================================== */
+
+const PreviewEditorialCard = ({ editorial }) => {
+  if (!editorial) return null;
+
+  return (
+    <div className="bg-white dark:bg-dark-card rounded-xl border border-gray-100 dark:border-dark-border overflow-hidden shadow-sm">
+      <div className="p-3 grid grid-cols-2 gap-3 items-center">
+        <div className="order-2 md:order-1 min-w-0">
+          <p className="text-[9px] uppercase tracking-[0.2em] text-gold-600 mb-1">
+            {editorial.eyebrow || 'Our Story'}
+          </p>
+          <p className="font-playfair text-sm font-bold text-gray-800 dark:text-white leading-tight line-clamp-3">
+            {editorial.heading || 'Your editorial heading'}
+          </p>
+          <p className="mt-1 text-[10px] text-gray-500 line-clamp-2">
+            {editorial.body || 'Editorial body text will appear here.'}
+          </p>
+          <div className="mt-2 flex items-center gap-1 text-gold-600 text-[10px] font-semibold">
+            {editorial.ctaText || 'Read More'} <ArrowRight className="h-3 w-3" />
+          </div>
+        </div>
+        <div className="aspect-[4/5] rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 order-1 md:order-2">
+          {editorial.imageUrl ? (
+            <img
+              src={normalizeImage(editorial.imageUrl)}
+              alt={editorial.heading}
+              className="w-full h-full object-cover"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">
+              <ImageIcon className="h-6 w-6" />
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="px-3 py-2 bg-gray-50 dark:bg-dark-bg border-t border-gray-100 dark:border-dark-border text-[10px] text-gray-500 flex justify-between">
+        <span>Badge: <strong>{editorial.statValue || '25+'}</strong></span>
+        <span>{editorial.statLabel || 'Years'}</span>
+      </div>
+    </div>
+  );
 };
 
 /* =================================================================== */
@@ -174,7 +435,7 @@ const useCrudResource = (resource, token) => {
 };
 
 /* =================================================================== */
-/*  Tab: Categories                                                    */
+/*  Tab: Categories (with preview)                                     */
 /* =================================================================== */
 
 const CategoriesTab = ({ token }) => {
@@ -182,6 +443,10 @@ const CategoriesTab = ({ token }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', slug: '', image: '', displayOrder: 0, isActive: true });
+  const [previewIdx, setPreviewIdx] = useState(0);
+
+  // Which item to render in preview: the item being edited, or the first/selected list item
+  const previewItem = editing ? form : items[previewIdx] || items[0] || null;
 
   const openAdd = () => {
     setEditing(null);
@@ -207,68 +472,85 @@ const CategoriesTab = ({ token }) => {
       if (editing) await update(editing.id || editing._id, form);
       else await create(form);
       setShowModal(false);
+      setEditing(null);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Save failed');
     }
   };
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <p className="text-xs sm:text-sm text-gray-500">Controls the "Shop by Category" grid on the homepage.</p>
-        <button onClick={openAdd}
-          className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 shadow-lg text-xs sm:text-sm self-start sm:self-auto flex-shrink-0">
-          <Plus className="h-4 w-4" /> Add Category
-        </button>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      {/* Left: existing list + controls */}
+      <div className="lg:col-span-2 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+          <p className="text-xs sm:text-sm text-gray-500">Controls the "Shop by Category" grid on the homepage.</p>
+          <button onClick={openAdd}
+            className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 shadow-lg text-xs sm:text-sm self-start sm:self-auto flex-shrink-0">
+            <Plus className="h-4 w-4" /> Add Category
+          </button>
+        </div>
+
+        {loading ? <Spinner /> : items.length === 0 ? (
+          <EmptyState label="No categories yet" />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {items.map((c, idx) => (
+              <div
+                key={c.id || c._id}
+                className={`bg-white dark:bg-dark-card rounded-2xl shadow overflow-hidden transition ${
+                  previewIdx === idx ? 'ring-2 ring-gold-500' : ''
+                }`}
+                onClick={() => setPreviewIdx(idx)}
+              >
+                <div className="aspect-video bg-gray-100 dark:bg-gray-800 relative cursor-pointer">
+                  {c.image ? (
+                    <img src={normalizeImage(c.image)} alt={c.name}
+                      className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      <ImageIcon className="h-8 w-8" />
+                    </div>
+                  )}
+                  <div className={`absolute top-2 left-2 px-2 py-1 text-xs rounded font-medium ${
+                    c.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {c.isActive ? 'Active' : 'Inactive'}
+                  </div>
+                  <div className="absolute bottom-2 right-2 bg-white/90 dark:bg-black/70 text-xs px-2 py-1 rounded">
+                    Order: {c.displayOrder ?? 0}
+                  </div>
+                </div>
+                <div className="p-4 flex justify-between items-center gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-800 dark:text-white truncate">{c.name}</p>
+                    <p className="text-xs text-gray-500 truncate">/{c.slug}</p>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button onClick={(e) => { e.stopPropagation(); openEdit(c); }}
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button onClick={(e) => { e.stopPropagation(); remove(c.id || c._id, c.name); }}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {loading ? <Spinner /> : items.length === 0 ? (
-        <EmptyState label="No categories yet" />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((c) => (
-            <div key={c.id || c._id} className="bg-white dark:bg-dark-card rounded-2xl shadow overflow-hidden">
-              <div className="aspect-video bg-gray-100 dark:bg-gray-800 relative">
-                {c.image ? (
-                  <img src={normalizeImage(c.image)} alt={c.name}
-                    className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400">
-                    <ImageIcon className="h-8 w-8" />
-                  </div>
-                )}
-                <div className={`absolute top-2 left-2 px-2 py-1 text-xs rounded font-medium ${
-                  c.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-700'
-                }`}>
-                  {c.isActive ? 'Active' : 'Inactive'}
-                </div>
-                <div className="absolute bottom-2 right-2 bg-white/90 dark:bg-black/70 text-xs px-2 py-1 rounded">
-                  Order: {c.displayOrder ?? 0}
-                </div>
-              </div>
-              <div className="p-4 flex justify-between items-center gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-800 dark:text-white truncate">{c.name}</p>
-                  <p className="text-xs text-gray-500 truncate">/{c.slug}</p>
-                </div>
-                <div className="flex gap-1 flex-shrink-0">
-                  <button onClick={() => openEdit(c)}
-                    className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg">
-                    <Edit className="h-4 w-4" />
-                  </button>
-                  <button onClick={() => remove(c.id || c._id, c.name)}
-                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Right: live preview */}
+      <div className="min-w-0">
+        <PreviewPanel title="Category Preview" emptyText="Add a category to see the preview">
+          <PreviewCategoryCard category={previewItem} />
+        </PreviewPanel>
+      </div>
 
       {showModal && (
-        <ModalShell onClose={() => setShowModal(false)} title={editing ? 'Edit Category' : 'Add Category'}>
+        <ModalShell onClose={() => { setShowModal(false); setEditing(null); }} title={editing ? 'Edit Category' : 'Add Category'}>
           <form onSubmit={submit} className="space-y-4">
             <Field label="Name *">
               <input required value={form.name}
@@ -297,16 +579,16 @@ const CategoriesTab = ({ token }) => {
                 </label>
               </div>
             </div>
-            <ModalActions onCancel={() => setShowModal(false)} submitLabel={editing ? 'Update' : 'Create'} />
+            <ModalActions onCancel={() => { setShowModal(false); setEditing(null); }} submitLabel={editing ? 'Update' : 'Create'} />
           </form>
         </ModalShell>
       )}
-    </>
+    </div>
   );
 };
 
 /* =================================================================== */
-/*  Tab: Collections                                                   */
+/*  Tab: Collections (with preview)                                    */
 /* =================================================================== */
 
 const CollectionsTab = ({ token }) => {
@@ -314,6 +596,9 @@ const CollectionsTab = ({ token }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', slug: '', image: '', color: '#C9A227', displayOrder: 0, isActive: true });
+  const [previewIdx, setPreviewIdx] = useState(0);
+
+  const previewItem = editing ? form : items[previewIdx] || items[0] || null;
 
   const openAdd = () => {
     setEditing(null);
@@ -340,68 +625,83 @@ const CollectionsTab = ({ token }) => {
       if (editing) await update(editing.id || editing._id, form);
       else await create(form);
       setShowModal(false);
+      setEditing(null);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Save failed');
     }
   };
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <p className="text-xs sm:text-sm text-gray-500">Controls the "Shop the Collections" carousel.</p>
-        <button onClick={openAdd}
-          className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 shadow-lg text-xs sm:text-sm self-start sm:self-auto flex-shrink-0">
-          <Plus className="h-4 w-4" /> Add Collection
-        </button>
-      </div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="lg:col-span-2 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+          <p className="text-xs sm:text-sm text-gray-500">Controls the "Shop the Collections" carousel.</p>
+          <button onClick={openAdd}
+            className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 shadow-lg text-xs sm:text-sm self-start sm:self-auto flex-shrink-0">
+            <Plus className="h-4 w-4" /> Add Collection
+          </button>
+        </div>
 
-      {loading ? <Spinner /> : items.length === 0 ? (
-        <EmptyState label="No collections yet" />
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-          {items.map((c) => (
-            <div key={c.id || c._id} className="rounded-2xl overflow-hidden shadow relative">
+        {loading ? <Spinner /> : items.length === 0 ? (
+          <EmptyState label="No collections yet" />
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+            {items.map((c, idx) => (
               <div
-                className="aspect-[4/5] flex items-end p-3 sm:p-4 relative"
-                style={
-                  !c.image
-                    ? { background: `linear-gradient(160deg, ${c.color || '#C9A227'}, #1a1a1a)` }
-                    : undefined
-                }
+                key={c.id || c._id}
+                className={`rounded-2xl overflow-hidden shadow relative transition cursor-pointer ${
+                  previewIdx === idx ? 'ring-2 ring-gold-500' : ''
+                }`}
+                onClick={() => setPreviewIdx(idx)}
               >
-                {c.image && (
-                  <>
-                    <img
-                      src={normalizeImage(c.image)}
-                      alt={c.name}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                  </>
-                )}
-                <div className="relative text-white min-w-0">
-                  <p className="font-playfair text-base sm:text-xl truncate">{c.name}</p>
-                  <p className="text-xs opacity-70 truncate">/{c.slug}</p>
+                <div
+                  className="aspect-[4/5] flex items-end p-3 sm:p-4 relative"
+                  style={
+                    !c.image
+                      ? { background: `linear-gradient(160deg, ${c.color || '#C9A227'}, #1a1a1a)` }
+                      : undefined
+                  }
+                >
+                  {c.image && (
+                    <>
+                      <img
+                        src={normalizeImage(c.image)}
+                        alt={c.name}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                    </>
+                  )}
+                  <div className="relative text-white min-w-0">
+                    <p className="font-playfair text-base sm:text-xl truncate">{c.name}</p>
+                    <p className="text-xs opacity-70 truncate">/{c.slug}</p>
+                  </div>
+                </div>
+                <div className="absolute top-2 right-2 flex gap-1">
+                  <button onClick={(e) => { e.stopPropagation(); openEdit(c); }}
+                    className="p-1.5 bg-white/90 rounded-lg text-blue-600 hover:bg-white">
+                    <Edit className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); remove(c.id || c._id, c.name); }}
+                    className="p-1.5 bg-white/90 rounded-lg text-red-600 hover:bg-white">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
                 </div>
               </div>
-              <div className="absolute top-2 right-2 flex gap-1">
-                <button onClick={() => openEdit(c)}
-                  className="p-1.5 bg-white/90 rounded-lg text-blue-600 hover:bg-white">
-                  <Edit className="h-3.5 w-3.5" />
-                </button>
-                <button onClick={() => remove(c.id || c._id, c.name)}
-                  className="p-1.5 bg-white/90 rounded-lg text-red-600 hover:bg-white">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="min-w-0">
+        <PreviewPanel title="Collection Preview" emptyText="Add a collection to see the preview">
+          <PreviewCollectionCard collection={previewItem} />
+        </PreviewPanel>
+      </div>
 
       {showModal && (
-        <ModalShell onClose={() => setShowModal(false)} title={editing ? 'Edit Collection' : 'Add Collection'}>
+        <ModalShell onClose={() => { setShowModal(false); setEditing(null); }} title={editing ? 'Edit Collection' : 'Add Collection'}>
           <form onSubmit={submit} className="space-y-4">
             <Field label="Name *">
               <input required value={form.name}
@@ -430,16 +730,16 @@ const CollectionsTab = ({ token }) => {
                 onChange={(e) => setForm({ ...form, displayOrder: parseInt(e.target.value || '0', 10) })}
                 className={inputCls} />
             </Field>
-            <ModalActions onCancel={() => setShowModal(false)} submitLabel={editing ? 'Update' : 'Create'} />
+            <ModalActions onCancel={() => { setShowModal(false); setEditing(null); }} submitLabel={editing ? 'Update' : 'Create'} />
           </form>
         </ModalShell>
       )}
-    </>
+    </div>
   );
 };
 
 /* =================================================================== */
-/*  Tab: Testimonials                                                  */
+/*  Tab: Testimonials (with preview)                                   */
 /* =================================================================== */
 
 const TestimonialsTab = ({ token }) => {
@@ -447,6 +747,9 @@ const TestimonialsTab = ({ token }) => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', city: '', rating: 5, text: '', isActive: true, displayOrder: 0 });
+  const [previewIdx, setPreviewIdx] = useState(0);
+
+  const previewItem = editing ? form : items[previewIdx] || items[0] || null;
 
   const openAdd = () => {
     setEditing(null);
@@ -473,100 +776,107 @@ const TestimonialsTab = ({ token }) => {
       if (editing) await update(editing.id || editing._id, form);
       else await create(form);
       setShowModal(false);
+      setEditing(null);
     } catch (err) {
       toast.error(err.response?.data?.message || 'Save failed');
     }
   };
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <p className="text-xs sm:text-sm text-gray-500">Controls the "What Our Customers Say" section.</p>
-        <button onClick={openAdd}
-          className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 shadow-lg text-xs sm:text-sm self-start sm:self-auto flex-shrink-0">
-          <Plus className="h-4 w-4" /> Add Testimonial
-        </button>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="lg:col-span-2 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+          <p className="text-xs sm:text-sm text-gray-500">Controls the "What Our Customers Say" section.</p>
+          <button onClick={openAdd}
+            className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 shadow-lg text-xs sm:text-sm self-start sm:self-auto flex-shrink-0">
+            <Plus className="h-4 w-4" /> Add Testimonial
+          </button>
+        </div>
+
+        {loading ? <Spinner /> : items.length === 0 ? (
+          <EmptyState label="No testimonials yet" />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+            {items.map((t, idx) => (
+              <div
+                key={t.id || t._id}
+                className={`group bg-white dark:bg-dark-card rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm hover:shadow-lg transition-all flex flex-col overflow-hidden cursor-pointer ${
+                  previewIdx === idx ? 'ring-2 ring-gold-500' : ''
+                }`}
+                onClick={() => setPreviewIdx(idx)}
+              >
+                <div className="flex items-center justify-between px-4 pt-4 pb-2 gap-2">
+                  <div className="flex gap-0.5 text-gold-500">
+                    {Array.from({ length: 5 }).map((_, k) => (
+                      <Star
+                        key={k}
+                        className="h-3.5 w-3.5 sm:h-4 sm:w-4"
+                        fill={k < (t.rating || 5) ? 'currentColor' : 'none'}
+                        stroke={k < (t.rating || 5) ? 'currentColor' : '#D1D5DB'}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openEdit(t); }}
+                      title="Edit"
+                      className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
+                    >
+                      <Edit className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); remove(t.id || t._id, t.name); }}
+                      title="Delete"
+                      className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 px-4 py-2 flex gap-2 min-w-0">
+                  <Quote className="h-4 w-4 text-gold-300 dark:text-gold-700 shrink-0 mt-0.5" fill="currentColor" />
+                  <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4">
+                    {t.text}
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between px-4 py-3 mt-2 border-t border-gray-100 dark:border-dark-border bg-gray-50/60 dark:bg-dark-bg/40 gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="h-8 w-8 rounded-full bg-gold-100 dark:bg-gold-900/30 flex items-center justify-center text-gold-700 dark:text-gold-300 font-semibold text-xs flex-shrink-0">
+                      {(t.name || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div className="leading-tight min-w-0">
+                      <p className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-white truncate">
+                        {t.name}
+                      </p>
+                      {t.city && (
+                        <p className="text-xs text-gray-400 truncate">{t.city}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {!t.isActive && (
+                    <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium flex-shrink-0">
+                      Inactive
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {loading ? <Spinner /> : items.length === 0 ? (
-        <EmptyState label="No testimonials yet" />
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-          {items.map((t) => (
-            <div
-              key={t.id || t._id}
-              className="group bg-white dark:bg-dark-card rounded-2xl border border-gray-100 dark:border-dark-border shadow-sm hover:shadow-lg transition-all flex flex-col overflow-hidden"
-            >
-              <div className="flex items-center justify-between px-4 sm:px-5 pt-4 pb-2 gap-2">
-                <div className="flex gap-0.5 text-gold-500">
-                  {Array.from({ length: 5 }).map((_, k) => (
-                    <Star
-                      key={k}
-                      className="h-3.5 w-3.5 sm:h-4 sm:w-4"
-                      fill={k < (t.rating || 5) ? 'currentColor' : 'none'}
-                      stroke={k < (t.rating || 5) ? 'currentColor' : '#D1D5DB'}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => openEdit(t)}
-                    title="Edit"
-                    className="p-1.5 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition"
-                    aria-label="Edit testimonial"
-                  >
-                    <Edit className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    onClick={() => remove(t.id || t._id, t.name)}
-                    title="Delete"
-                    className="p-1.5 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition"
-                    aria-label="Delete testimonial"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 px-4 sm:px-5 py-2 flex gap-2 min-w-0">
-                <Quote
-                  className="h-4 w-4 text-gold-300 dark:text-gold-700 shrink-0 mt-0.5"
-                  fill="currentColor"
-                />
-                <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 leading-relaxed line-clamp-4">
-                  {t.text}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between px-4 sm:px-5 py-3 mt-2 border-t border-gray-100 dark:border-dark-border bg-gray-50/60 dark:bg-dark-bg/40 gap-2">
-                <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-                  <div className="h-8 w-8 rounded-full bg-gold-100 dark:bg-gold-900/30 flex items-center justify-center text-gold-700 dark:text-gold-300 font-semibold text-xs flex-shrink-0">
-                    {(t.name || '?').charAt(0).toUpperCase()}
-                  </div>
-                  <div className="leading-tight min-w-0">
-                    <p className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-white truncate">
-                      {t.name}
-                    </p>
-                    {t.city && (
-                      <p className="text-xs text-gray-400 truncate">{t.city}</p>
-                    )}
-                  </div>
-                </div>
-
-                {!t.isActive && (
-                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium flex-shrink-0">
-                    Inactive
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="min-w-0">
+        <PreviewPanel title="Testimonial Preview" emptyText="Add a testimonial to see the preview">
+          <PreviewTestimonialCard testimonial={previewItem} />
+        </PreviewPanel>
+      </div>
 
       {showModal && (
-        <ModalShell onClose={() => setShowModal(false)} title={editing ? 'Edit Testimonial' : 'Add Testimonial'}>
+        <ModalShell onClose={() => { setShowModal(false); setEditing(null); }} title={editing ? 'Edit Testimonial' : 'Add Testimonial'}>
           <form onSubmit={submit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Field label="Name *">
@@ -626,17 +936,18 @@ const TestimonialsTab = ({ token }) => {
               </div>
             </div>
 
-            <ModalActions onCancel={() => setShowModal(false)} submitLabel={editing ? 'Update' : 'Create'} />
+            <ModalActions onCancel={() => { setShowModal(false); setEditing(null); }} submitLabel={editing ? 'Update' : 'Create'} />
           </form>
         </ModalShell>
       )}
-    </>
+    </div>
   );
 };
 
 /* =================================================================== */
-/*  Tab: Editorial                                                     */
+/*  Tab: Editorial (with preview)                                      */
 /* =================================================================== */
+
 const EditorialTab = ({ token }) => {
   const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
   const [loading, setLoading] = useState(true);
@@ -685,55 +996,63 @@ const EditorialTab = ({ token }) => {
   if (loading) return <Spinner />;
 
   return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
-        <p className="text-xs sm:text-sm text-gray-500">
-          Controls the "Our Story" editorial banner between Testimonials and Stats.
-        </p>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 shadow-lg text-xs sm:text-sm self-start sm:self-auto flex-shrink-0"
-        >
-          <Edit className="h-4 w-4" /> Edit Editorial
-        </button>
-      </div>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="lg:col-span-2 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-4">
+          <p className="text-xs sm:text-sm text-gray-500">
+            Controls the "Our Story" editorial banner between Testimonials and Stats.
+          </p>
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center justify-center gap-2 shadow-lg text-xs sm:text-sm self-start sm:self-auto flex-shrink-0"
+          >
+            <Edit className="h-4 w-4" /> Edit Editorial
+          </button>
+        </div>
 
-      <div className="bg-white dark:bg-dark-card rounded-2xl shadow overflow-hidden max-w-3xl">
-        <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-center">
-          <div className="order-2 md:order-1">
-            <p className="text-xs uppercase tracking-[0.2em] text-gold-600 mb-2">
-              {form.eyebrow}
-            </p>
-            <h3 className="text-lg sm:text-2xl font-playfair font-bold text-gray-800 dark:text-white">
-              {form.heading}
-            </h3>
-            <p className="mt-3 text-xs sm:text-sm text-gray-600 dark:text-gray-400 line-clamp-4">
-              {form.body}
-            </p>
-            <div className="mt-4 flex items-center gap-2 text-gold-600 text-xs sm:text-sm font-semibold">
-              {form.ctaText} <ArrowRight className="h-4 w-4" />
+        <div className="bg-white dark:bg-dark-card rounded-2xl shadow overflow-hidden max-w-3xl">
+          <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 items-center">
+            <div className="order-2 md:order-1">
+              <p className="text-xs uppercase tracking-[0.2em] text-gold-600 mb-2">
+                {form.eyebrow}
+              </p>
+              <h3 className="text-lg sm:text-2xl font-playfair font-bold text-gray-800 dark:text-white">
+                {form.heading}
+              </h3>
+              <p className="mt-3 text-xs sm:text-sm text-gray-600 dark:text-gray-400 line-clamp-4">
+                {form.body}
+              </p>
+              <div className="mt-4 flex items-center gap-2 text-gold-600 text-xs sm:text-sm font-semibold">
+                {form.ctaText} <ArrowRight className="h-4 w-4" />
+              </div>
+            </div>
+            <div className="aspect-[4/5] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 order-1 md:order-2">
+              {form.imageUrl ? (
+                <img
+                  src={normalizeImage(form.imageUrl)}
+                  alt={form.heading}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                  <ImageIcon className="h-10 w-10" />
+                </div>
+              )}
             </div>
           </div>
-          <div className="aspect-[4/5] rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800 order-1 md:order-2">
-            {form.imageUrl ? (
-              <img
-                src={normalizeImage(form.imageUrl)}
-                alt={form.heading}
-                className="w-full h-full object-cover"
-                onError={(e) => { e.currentTarget.style.display = 'none'; }}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-400">
-                <ImageIcon className="h-10 w-10" />
-              </div>
-            )}
+          <div className="bg-gray-50 dark:bg-dark-bg px-4 sm:px-6 py-3 border-t border-gray-100 dark:border-dark-border flex flex-wrap justify-between items-center gap-2">
+            <span className="text-xs text-gray-500">
+              Bottom-left badge: <strong>{form.statValue}</strong> {form.statLabel}
+            </span>
           </div>
         </div>
-        <div className="bg-gray-50 dark:bg-dark-bg px-4 sm:px-6 py-3 border-t border-gray-100 dark:border-dark-border flex flex-wrap justify-between items-center gap-2">
-          <span className="text-xs text-gray-500">
-            Bottom-left badge: <strong>{form.statValue}</strong> {form.statLabel}
-          </span>
-        </div>
+      </div>
+
+      <div className="min-w-0">
+        <PreviewPanel title="Editorial Preview">
+          <PreviewEditorialCard editorial={form} />
+        </PreviewPanel>
       </div>
 
       {showModal && (
@@ -792,12 +1111,12 @@ const EditorialTab = ({ token }) => {
           </form>
         </ModalShell>
       )}
-    </>
+    </div>
   );
 };
 
 /* =================================================================== */
-/*  Banner Tab (existing logic preserved)                              */
+/*  Banner Tab (existing logic + preview)                              */
 /* =================================================================== */
 
 const BannerTab = ({ token }) => {
@@ -815,6 +1134,7 @@ const BannerTab = ({ token }) => {
   const [editingBanner, setEditingBanner] = useState(null);
   const [formData, setFormData] = useState(emptyForm);
   const [dragId, setDragId] = useState(null);
+  const [previewId, setPreviewId] = useState(null);
 
   const authHeaders = { headers: { Authorization: `Bearer ${token}` } };
 
@@ -856,6 +1176,11 @@ const BannerTab = ({ token }) => {
 
   const refresh = () => { fetchBanners(pagination.page); fetchStats(); };
 
+  // Determine which banner to preview
+  const previewBanner = editingBanner
+    ? formData
+    : banners.find((b) => b.id === previewId) || banners[0] || null;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -883,6 +1208,7 @@ const BannerTab = ({ token }) => {
 
   const openEditModal = (banner) => {
     setEditingBanner(banner);
+    setPreviewId(banner.id);
     setFormData({
       ...banner,
       startDate: banner.startDate ? banner.startDate.split('T')[0] : '',
@@ -971,155 +1297,165 @@ const BannerTab = ({ token }) => {
   };
 
   return (
-    <>
-      <div className="flex flex-wrap justify-end items-center gap-2 mb-4">
-        <button onClick={refresh}
-          className="px-3 sm:px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-dark-bg transition flex items-center gap-2 text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-          <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Refresh
-        </button>
-        <button onClick={handleExport}
-          className="px-3 sm:px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-dark-bg transition flex items-center gap-2 text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
-          <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Export CSV
-        </button>
-        <button onClick={openAddModal}
-          className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg transition flex items-center gap-2 shadow-lg text-xs sm:text-sm">
-          <Plus className="h-4 w-4 sm:h-5 sm:w-5" /> Add Banner
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
-        <StatCard label="Live" value={stats.live} color="text-green-600" Icon={CheckCircle2} />
-        <StatCard label="Scheduled" value={stats.scheduled} color="text-blue-600" Icon={Clock} />
-        <StatCard label="Expired" value={stats.expired} color="text-gray-500" Icon={Clock} />
-        <StatCard label="Inactive" value={stats.inactive} color="text-red-600" Icon={Ban} />
-      </div>
-
-      {(stats.totalViews > 0 || stats.totalClicks > 0) && (
-        <div className="bg-white dark:bg-dark-card rounded-2xl shadow p-3 sm:p-4 flex flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm mb-4">
-          <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-            <Eye className="h-4 w-4" />
-            <strong>{stats.totalViews.toLocaleString('en-IN')}</strong> views
-          </span>
-          <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-            <MousePointerClick className="h-4 w-4" />
-            <strong>{stats.totalClicks.toLocaleString('en-IN')}</strong> clicks
-          </span>
-          <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
-            <TrendingUp className="h-4 w-4" />
-            <strong>{stats.ctr}%</strong> CTR
-          </span>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="lg:col-span-2 min-w-0">
+        <div className="flex flex-wrap justify-end items-center gap-2 mb-4">
+          <button onClick={refresh}
+            className="px-3 sm:px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-dark-bg transition flex items-center gap-2 text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
+            <RefreshCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Refresh
+          </button>
+          <button onClick={handleExport}
+            className="px-3 sm:px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg hover:bg-gray-50 dark:hover:bg-dark-bg transition flex items-center gap-2 text-gray-700 dark:text-gray-300 text-xs sm:text-sm">
+            <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Export CSV
+          </button>
+          <button onClick={openAddModal}
+            className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg transition flex items-center gap-2 shadow-lg text-xs sm:text-sm">
+            <Plus className="h-4 w-4 sm:h-5 sm:w-5" /> Add Banner
+          </button>
         </div>
-      )}
 
-      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 mb-4">
-        <div className="flex gap-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-lg overflow-x-auto flex-shrink-0">
-          {FILTERS.map((f) => (
-            <button key={f.key} onClick={() => setFilter(f.key)}
-              className={`px-3 py-1.5 text-xs sm:text-sm rounded-md transition whitespace-nowrap ${
-                filter === f.key
-                  ? 'bg-white dark:bg-dark-card shadow text-gray-900 dark:text-white font-medium'
-                  : 'text-gray-600 dark:text-gray-400 hover:text-gray-800'
-              }`}>
-              {f.label}
-            </button>
-          ))}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <StatCard label="Live" value={stats.live} color="text-green-600" Icon={CheckCircle2} />
+          <StatCard label="Scheduled" value={stats.scheduled} color="text-blue-600" Icon={Clock} />
+          <StatCard label="Expired" value={stats.expired} color="text-gray-500" Icon={Clock} />
+          <StatCard label="Inactive" value={stats.inactive} color="text-red-600" Icon={Ban} />
         </div>
-        <input
-          type="text"
-          placeholder="Search banners by title..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-0 sm:min-w-[200px] px-3 sm:px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg bg-white dark:bg-dark-card focus:outline-none focus:ring-2 focus:ring-gold-500 text-sm sm:text-base"
-        />
-      </div>
 
-      {loading ? <Spinner /> : banners.length === 0 ? (
-        <EmptyState label="No banners match your filters" Icon={ImageIcon} />
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {banners.map((banner) => {
-            const style = STATUS_STYLE[banner.status] || STATUS_STYLE.inactive;
-            const img = normalizeImage(banner.imageUrl);
-            const days = banner.status === 'scheduled' ? daysUntil(banner.startDate) : null;
+        {(stats.totalViews > 0 || stats.totalClicks > 0) && (
+          <div className="bg-white dark:bg-dark-card rounded-2xl shadow p-3 sm:p-4 flex flex-wrap gap-3 sm:gap-6 text-xs sm:text-sm mb-4">
+            <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+              <Eye className="h-4 w-4" />
+              <strong>{stats.totalViews.toLocaleString('en-IN')}</strong> views
+            </span>
+            <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+              <MousePointerClick className="h-4 w-4" />
+              <strong>{stats.totalClicks.toLocaleString('en-IN')}</strong> clicks
+            </span>
+            <span className="flex items-center gap-2 text-gray-600 dark:text-gray-300">
+              <TrendingUp className="h-4 w-4" />
+              <strong>{stats.ctr}%</strong> CTR
+            </span>
+          </div>
+        )}
 
-            return (
-              <div
-                key={banner.id}
-                draggable
-                onDragStart={() => handleDragStart(banner.id)}
-                onDragOver={(e) => handleDragOver(e, banner.id)}
-                onDragEnd={handleDragEnd}
-                className={`bg-white dark:bg-dark-card rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition group ${
-                  dragId === banner.id ? 'opacity-50' : ''
-                }`}
-              >
-                <div className="relative h-44 sm:h-48 bg-gray-100 dark:bg-gray-800">
-                  {img ? (
-                    <img src={img} alt={banner.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
-                  ) : null}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-4">
-                    <div className="text-white min-w-0">
-                      <h3 className="font-bold text-base sm:text-lg truncate">{banner.title}</h3>
-                      {banner.subtitle && <p className="text-xs sm:text-sm opacity-90 truncate">{banner.subtitle}</p>}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 mb-4">
+          <div className="flex gap-1 bg-gray-100 dark:bg-dark-bg p-1 rounded-lg overflow-x-auto flex-shrink-0">
+            {FILTERS.map((f) => (
+              <button key={f.key} onClick={() => setFilter(f.key)}
+                className={`px-3 py-1.5 text-xs sm:text-sm rounded-md transition whitespace-nowrap ${
+                  filter === f.key
+                    ? 'bg-white dark:bg-dark-card shadow text-gray-900 dark:text-white font-medium'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-800'
+                }`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          <input
+            type="text"
+            placeholder="Search banners by title..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1 min-w-0 sm:min-w-[200px] px-3 sm:px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg bg-white dark:bg-dark-card focus:outline-none focus:ring-2 focus:ring-gold-500 text-sm sm:text-base"
+          />
+        </div>
+
+        {loading ? <Spinner /> : banners.length === 0 ? (
+          <EmptyState label="No banners match your filters" Icon={ImageIcon} />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            {banners.map((banner) => {
+              const style = STATUS_STYLE[banner.status] || STATUS_STYLE.inactive;
+              const img = normalizeImage(banner.imageUrl);
+              const days = banner.status === 'scheduled' ? daysUntil(banner.startDate) : null;
+              const isPreviewed = previewBanner?.id === banner.id;
+
+              return (
+                <div
+                  key={banner.id}
+                  draggable
+                  onDragStart={() => handleDragStart(banner.id)}
+                  onDragOver={(e) => handleDragOver(e, banner.id)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => setPreviewId(banner.id)}
+                  className={`bg-white dark:bg-dark-card rounded-2xl shadow-lg overflow-hidden hover:shadow-xl transition group cursor-pointer ${
+                    dragId === banner.id ? 'opacity-50' : ''
+                  } ${isPreviewed ? 'ring-2 ring-gold-500' : ''}`}
+                >
+                  <div className="relative h-44 sm:h-48 bg-gray-100 dark:bg-gray-800">
+                    {img ? (
+                      <img src={img} alt={banner.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { e.target.style.display = 'none'; }} />
+                    ) : null}
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-4">
+                      <div className="text-white min-w-0">
+                        <h3 className="font-bold text-base sm:text-lg truncate">{banner.title}</h3>
+                        {banner.subtitle && <p className="text-xs sm:text-sm opacity-90 truncate">{banner.subtitle}</p>}
+                      </div>
+                    </div>
+                    <div className="absolute top-2 right-2 bg-white/90 dark:bg-black/60 p-1 rounded cursor-grab active:cursor-grabbing">
+                      <GripVertical className="h-4 w-4 text-gray-700 dark:text-gray-200" />
+                    </div>
+                    <div className={`absolute top-2 left-2 flex items-center gap-1 px-2 py-1 text-xs font-medium rounded ${style.bg}`}>
+                      <style.Icon className="h-3 w-3" />
+                      {style.label}
+                    </div>
+                    <div className="absolute bottom-2 right-2 bg-white/90 dark:bg-black/70 text-gray-800 dark:text-white px-2 py-1 text-xs rounded">
+                      {banner.position}
                     </div>
                   </div>
-                  <div className="absolute top-2 right-2 bg-white/90 dark:bg-black/60 p-1 rounded cursor-grab active:cursor-grabbing">
-                    <GripVertical className="h-4 w-4 text-gray-700 dark:text-gray-200" />
-                  </div>
-                  <div className={`absolute top-2 left-2 flex items-center gap-1 px-2 py-1 text-xs font-medium rounded ${style.bg}`}>
-                    <style.Icon className="h-3 w-3" />
-                    {style.label}
-                  </div>
-                  <div className="absolute bottom-2 right-2 bg-white/90 dark:bg-black/70 text-gray-800 dark:text-white px-2 py-1 text-xs rounded">
-                    {banner.position}
+
+                  <div className="p-3 sm:p-4 space-y-2">
+                    <div className="flex justify-between items-center gap-2">
+                      <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 truncate min-w-0">
+                        <LinkIcon className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">{banner.link || 'No link'}</span>
+                      </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <button onClick={(e) => { e.stopPropagation(); openEditModal(banner); }}
+                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition">
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(banner); }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition">
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                    {banner.status === 'scheduled' && days !== null && (
+                      <p className="text-xs text-blue-600 flex items-center gap-1">
+                        <Clock className="h-3 w-3" /> Starts in {days} day{days === 1 ? '' : 's'}
+                      </p>
+                    )}
+                    {(banner.startDate || banner.endDate) && (
+                      <div className="flex items-center gap-1 text-xs text-gray-400">
+                        <Calendar className="h-3 w-3" />
+                        {fmtDate(banner.startDate)} → {fmtDate(banner.endDate)}
+                      </div>
+                    )}
+                    {(banner.views > 0 || banner.clicks > 0) && (
+                      <div className="flex items-center gap-3 text-xs text-gray-500 pt-2 border-t border-gray-100 dark:border-dark-border flex-wrap">
+                        <span>{banner.views} views</span>
+                        <span>{banner.clicks} clicks</span>
+                        <span className="text-gold-600 font-medium">
+                          {banner.views > 0 ? ((banner.clicks / banner.views) * 100).toFixed(1) : '0.0'}% CTR
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
-                <div className="p-3 sm:p-4 space-y-2">
-                  <div className="flex justify-between items-center gap-2">
-                    <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 truncate min-w-0">
-                      <LinkIcon className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">{banner.link || 'No link'}</span>
-                    </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button onClick={() => openEditModal(banner)}
-                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition">
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button onClick={() => handleDelete(banner)}
-                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                  {banner.status === 'scheduled' && days !== null && (
-                    <p className="text-xs text-blue-600 flex items-center gap-1">
-                      <Clock className="h-3 w-3" /> Starts in {days} day{days === 1 ? '' : 's'}
-                    </p>
-                  )}
-                  {(banner.startDate || banner.endDate) && (
-                    <div className="flex items-center gap-1 text-xs text-gray-400">
-                      <Calendar className="h-3 w-3" />
-                      {fmtDate(banner.startDate)} → {fmtDate(banner.endDate)}
-                    </div>
-                  )}
-                  {(banner.views > 0 || banner.clicks > 0) && (
-                    <div className="flex items-center gap-3 text-xs text-gray-500 pt-2 border-t border-gray-100 dark:border-dark-border flex-wrap">
-                      <span>{banner.views} views</span>
-                      <span>{banner.clicks} clicks</span>
-                      <span className="text-gold-600 font-medium">
-                        {banner.views > 0 ? ((banner.clicks / banner.views) * 100).toFixed(1) : '0.0'}% CTR
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <div className="min-w-0">
+        <PreviewPanel title="Banner Preview" emptyText="Add a banner to see the preview">
+          <PreviewBannerCard banner={previewBanner} />
+        </PreviewPanel>
+      </div>
 
       {showModal && (
         <ModalShell onClose={closeModal} title={editingBanner ? 'Edit Banner' : 'Add Banner'} wide>
@@ -1204,12 +1540,12 @@ const BannerTab = ({ token }) => {
           </form>
         </ModalShell>
       )}
-    </>
+    </div>
   );
 };
 
 /* =================================================================== */
-/*  Shell + shared UI helpers                                          */
+/*  Shell                                                              */
 /* =================================================================== */
 
 const BannerManagement = () => {
@@ -1223,7 +1559,7 @@ const BannerManagement = () => {
           Homepage CMS
         </h1>
         <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400 mt-1">
-          Manage every section that appears on the homepage
+          Manage every section that appears on the homepage — with live preview
         </p>
       </div>
 
@@ -1254,7 +1590,7 @@ const BannerManagement = () => {
   );
 };
 
-/* -------------------- tiny shared components -------------------- */
+/* -------------------- shared bits -------------------- */
 
 const inputCls = 'w-full px-3 sm:px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 bg-white dark:bg-dark-card text-sm sm:text-base';
 
