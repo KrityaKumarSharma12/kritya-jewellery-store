@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/product.controller');
 
-// ⭐ IMPORT THE AUTH MIDDLEWARE
+//  IMPORT THE AUTH MIDDLEWARE
 const { authenticate, isAdmin } = require('../middleware/auth');
 
 // ============== PUBLIC ROUTES ==============
@@ -10,7 +10,7 @@ const { authenticate, isAdmin } = require('../middleware/auth');
 // Get all products
 router.get('/', productController.getAllProducts);
 
-// ⭐ DYNAMIC PRICE — MUST BE BEFORE /:id ⭐
+// DYNAMIC PRICE 
 router.get('/:productId/calculate-price', productController.calculateDynamicPrice);
 
 // Get single product
@@ -24,7 +24,7 @@ router.post('/premium', authenticate, isAdmin, productController.createProductWi
 // Standard create
 router.post('/', authenticate, isAdmin, productController.createProduct);
 
-// ⭐ PREMIUM UPDATE — handles variants, media, screw options ⭐
+// PREMIUM UPDATE — handles variants, media, screw options 
 router.put('/:id/premium', authenticate, isAdmin, productController.updateProductWithVariants);
 
 // Standard update — scalar fields only

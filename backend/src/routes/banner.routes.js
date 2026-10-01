@@ -2,13 +2,13 @@ const express = require('express');
 const router = express.Router();
 const adminService = require('../services/admin.service');
 
-// Public: fetch live banners for the storefront
+// Public fetch live banners for the storefront
 router.get('/live', async (req, res) => {
   try {
     const position = req.query.position || 'HOME';
     const banners = await adminService.getLiveBanners(position);
 
-    // Only expose the fields the storefront needs
+    // Only the storefront needs
     res.json(
       banners.map((b) => ({
         id: b.id,
@@ -27,13 +27,13 @@ router.get('/live', async (req, res) => {
   }
 });
 
-// Public: record a view (fire-and-forget)
+// Public: record a view 
 router.post('/:id/view', async (req, res) => {
   try {
     await adminService.recordBannerView(req.params.id);
     res.json({ ok: true });
   } catch (error) {
-    // never fail — analytics shouldn't break UX
+    
     res.json({ ok: false });
   }
 });

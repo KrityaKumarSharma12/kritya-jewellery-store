@@ -20,6 +20,7 @@ import AdminPanel from './pages/AdminPanel';
 import AdminLogin from './pages/AdminLogin';
 import ProtectedRoute from './components/ProtectedRoute';
 import WishlistPage from './pages/WishlistPage';
+import TawkChat from './components/TawkChat';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,7 +36,6 @@ const queryClient = new QueryClient({
 const AppLayout = ({ children }) => {
   const location = useLocation();
 
-  // Auth pages + admin pages render full-screen without storefront chrome
   const BARE_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password'];
   const isBareRoute = BARE_ROUTES.some((path) => location.pathname.startsWith(path));
   const isAdminRoute = location.pathname.startsWith('/admin');
@@ -64,12 +64,12 @@ function App() {
                   <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<HomePage />} />
-                    <Route path="/login" element={<LoginPage />} />  {/* ← ADD THIS */}
-                    <Route path="/register" element={<RegisterPage />} />  {/* ← ADD THIS */}
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/register" element={<RegisterPage />} />
                     <Route path="/products" element={<ProductListingPage />} />
                     <Route path="/products/:id" element={<ProductDetailPage />} />
                     <Route path="/cart" element={<CartPage />} />
-                    <Route path="/wishlist" element={<WishlistPage />}   />
+                    <Route path="/wishlist" element={<WishlistPage />} />
                     
                     {/* Protected Routes */}
                     <Route path="/payment" element={
@@ -92,6 +92,12 @@ function App() {
                     <Route path="/admin/login" element={<AdminLogin />} />
                   </Routes>
                 </AppLayout>
+
+                {/* ⭐ TawkChat lives here — inside Router, outside Routes.
+                    It renders once and survives route changes, so the widget
+                    doesn't reload when the user navigates. */}
+                <TawkChat />
+
                 <Toaster
                   position="top-right"
                   toastOptions={{
