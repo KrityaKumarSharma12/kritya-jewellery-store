@@ -161,6 +161,9 @@ model Product {
   screwOptions      ScrewOption[]
   colorMedia        ColorMedia[]
   pricingRules      PricingRule[]
+
+  // ✅ NEW: dynamic product link (Haath Phool, Couple Bands, Bridal Set)
+  dynamicProduct    DynamicProduct?
 }
 
 // ============================================================
@@ -609,6 +612,85 @@ model DynamicPrice {
 }
 
 // ============================================================
+// ✅ NEW: DYNAMIC PRODUCTS (Haath Phool, Couple Bands, Bridal Set)
+// ============================================================
+
+model DynamicProduct {
+  id                String              @id @default(cuid())
+  productId         String              @unique
+  product           Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type              DynamicProductType
+
+  // Bundle discount (only used for COUPLE_BANDS / BRIDAL_SET)
+  bundleDiscountPct Decimal?            @db.Decimal(5,2)
+
+  // Price-lock overrides — null means "use StoreSettings default"
+  priceLockEnabledOverride      Boolean?
+  priceLockDurationOverride     Int?
+  priceLockDurationUnitOverride String?   @db.VarChar(20)
+
+  isActive          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  components        ProductComponent[]
+  sizingRules       SizingWeightRule[]
+
+  @@index([type])
+  @@index([isActive])
+}
+
+model ProductComponent {
+  id                    String          @id @default(cuid())
+  dynamicProductId      String
+  dynamicProduct        DynamicProduct  @relation(fields: [dynamicProductId], references: [id], onDelete: Cascade)
+
+  name                  String          @db.VarChar(100)  // "Ring", "Bridge", "Bracelet"
+  componentKey          String          @db.VarChar(50)   // "ring", "bridge", "bracelet"
+  zone                  String?         @db.VarChar(50)   // "ring" | "bridge" | "bracelet" | "phool"
+  isOptional            Boolean         @default(false)   // for Bridal Set checkboxes
+
+  // Metal
+  metalType             String          @db.VarChar(20)   // "GOLD" | "SILVER" | "PLATINUM"
+  purity                String          @db.VarChar(20)   // "22K" | "18K" | "0"
+  baseWeightGrams       Decimal         @db.Decimal(10,3)
+  wastagePercentage     Decimal         @db.Decimal(5,2)  @default(0)
+
+  // Making charges — 3-way switch
+  makingChargeType      String          @db.VarChar(20)   @default("PER_GRAM")  // PER_GRAM | FLAT | PERCENTAGE
+  makingChargeValue     Decimal         @db.Decimal(10,2) @default(0)
+
+  // Gemstones: JSON array of { name, type, carats, ratePerCarat, settingCharge, count, isCluster, zone }
+  gemstones             Json            @default("[]")
+
+  // Precomputed total stone weight in grams (carats × 0.2 summed)
+  stoneWeightGrams      Decimal         @db.Decimal(10,3) @default(0)
+
+  displayOrder          Int             @default(0)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  @@unique([dynamicProductId, componentKey])
+  @@index([dynamicProductId])
+}
+
+model SizingWeightRule {
+  id                String          @id @default(cuid())
+  dynamicProductId  String
+  dynamicProduct    DynamicProduct  @relation(fields: [dynamicProductId], references: [id], onDelete: Cascade)
+
+  componentKey      String          @db.VarChar(50)   // which component the size applies to
+  sizeOption        String          @db.VarChar(50)   // "6.5_inch" | "size_8" | "4.5_inch"
+  weightSurgeGrams  Decimal         @db.Decimal(10,3) @default(0)
+  isDefault         Boolean         @default(false)
+
+  createdAt         DateTime        @default(now())
+
+  @@unique([dynamicProductId, componentKey, sizeOption])
+  @@index([dynamicProductId, componentKey])
+}
+
+// ============================================================
 // ORDER MODELS
 // ============================================================
 
@@ -639,6 +721,9 @@ model OrderItem {
   product     Product @relation(fields: [productId], references: [id])
   quantity    Int
   price       Float
+
+  // ✅ NEW: store the exact configuration used for dynamic products at order time
+  configuration Json?
 }
 
 model Cart {
@@ -651,10 +736,18 @@ model Cart {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  // Selected options
+  // Selected options (existing — used by regular products)
   selectedMetal     String?     @default("14")
   selectedColor     String?     @default("Rose")
   selectedSize      String?     @default("US 6")
+
+  // ✅ NEW: dynamic product configuration + price lock
+  configuration     Json?       // { ring: "size_8", bridge: "4.5_inch", bracelet: "6.5_inch" }
+  lockedPrice       Decimal?    @db.Decimal(10,2)
+  lockedAt          DateTime?
+  lockedUntil       DateTime?
+
+  @@index([lockedUntil])
 }
 
 // ============================================================
@@ -964,6 +1057,12 @@ model StoreSettings {
   // SEO
   metaTitle     String?   @db.VarChar(200)
   metaDescription String? @db.Text
+
+  // ✅ NEW: price-lock settings for dynamic products
+  priceLockEnabled            Boolean @default(true)
+  priceLockDuration           Int     @default(30)
+  priceLockDurationUnit       String  @default("minutes") @db.VarChar(20)  // "minutes" | "hours" | "days"
+  priceLockReconfirmThreshold Float   @default(2.0)  // percent — above this, force reconfirm
   
   isActive      Boolean   @default(true)
   createdAt     DateTime  @default(now())
@@ -1157,4 +1256,11 @@ enum MetalType {
   PLATINUM
   PALLADIUM
   RHODIUM
+}
+
+// ✅ NEW: enum for dynamic product types
+enum DynamicProductType {
+  HAATH_PHOOL
+  COUPLE_BANDS
+  BRIDAL_SET
 }
