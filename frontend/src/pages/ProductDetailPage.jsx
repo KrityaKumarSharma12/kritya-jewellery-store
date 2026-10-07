@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -13,6 +13,8 @@ import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { PLACEHOLDER_LARGE } from '../config/constants';
+import DynamicPriceBreakdown from '../components/DynamicPriceBreakdown';
 
 const ProductDetailPage = () => {
   const { id } = useParams();
@@ -33,7 +35,21 @@ const ProductDetailPage = () => {
   const [selectedSize, setSelectedSize] = useState('US 6');
 
   const [dynamicPrice, setDynamicPrice] = useState(null);
-  
+
+  // Dynamic product detection + configuration state
+  const [dynamicConfig, setDynamicConfig] = useState(null);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [sizeConfig, setSizeConfig] = useState({});
+
+  // Serialize sizeConfig so we can compare by value, not by reference
+  const sizeConfigKey = JSON.stringify(sizeConfig);
+
+  // Ref: tracks which config we've already fetched a price for.
+  const lastFetchedKeyRef = useRef(null);
+
+  // Ref: null = unknown, true = dynamic product, false = regular product.
+  const isDynamicRef = useRef(null);
+
   const { addToCart } = useCart();
   const { toggleWishlist, isWishlisted } = useWishlist();
   const { isAuthenticated } = useAuth();
@@ -63,12 +79,12 @@ const ProductDetailPage = () => {
     fetchProduct();
   }, [fetchProduct]);
 
-  // ⭐ Reset active image index when color changes
+  // Reset active image index when color changes
   useEffect(() => {
     setActiveImage(0);
   }, [selectedColor]);
 
-  // ============== FETCH DYNAMIC PRICE ==============
+  // ============== FETCH DYNAMIC PRICE (regular products) ==============
   const fetchDynamicPrice = useCallback(async () => {
     if (!product) return;
     
@@ -93,9 +109,78 @@ const ProductDetailPage = () => {
     }
   }, [id, selectedMetal, selectedColor, selectedSize, quantity, product]);
 
+  // Only fetch regular dynamic price for non-dynamic products.
   useEffect(() => {
+    if (isDynamicRef.current === null) return;
+    if (isDynamicRef.current === true) return;
     fetchDynamicPrice();
   }, [fetchDynamicPrice]);
+
+  // ============== FETCH DYNAMIC CONFIG ==============
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setConfigLoading(true);
+        const res = await axios.get(
+          `http://localhost:5000/api/products/${id}/dynamic-config`
+        );
+        if (cancelled) return;
+
+        setDynamicConfig(res.data);
+        isDynamicRef.current = !!res.data?.isDynamic;
+
+        if (res.data?.isDynamic && res.data.defaultConfiguration) {
+          setSizeConfig((prev) => {
+            const nextKey = JSON.stringify(res.data.defaultConfiguration);
+            const prevKey = JSON.stringify(prev);
+            if (prevKey === nextKey) return prev;
+            return res.data.defaultConfiguration;
+          });
+        }
+      } catch (err) {
+        console.error('Dynamic config fetch error:', err);
+        if (!cancelled) {
+          setDynamicConfig({ isDynamic: false });
+          isDynamicRef.current = false;
+        }
+      } finally {
+        if (!cancelled) setConfigLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [id]);
+
+  // ============== FETCH DYNAMIC PRICE (config-driven) ==============
+  useEffect(() => {
+    if (!dynamicConfig?.isDynamic) return;
+    if (!sizeConfigKey || sizeConfigKey === '{}') return;
+
+    if (lastFetchedKeyRef.current === sizeConfigKey) return;
+
+    lastFetchedKeyRef.current = sizeConfigKey;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        setPriceLoading(true);
+        const res = await axios.post(
+          `http://localhost:5000/api/products/${id}/price-preview`,
+          { configuration: sizeConfig }
+        );
+        if (!cancelled) setDynamicPrice(res.data);
+      } catch (err) {
+        console.error('Dynamic price preview error:', err);
+        lastFetchedKeyRef.current = null;
+      } finally {
+        if (!cancelled) setPriceLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [dynamicConfig, sizeConfigKey, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ============== HANDLERS ==============
   const handleQuantityChange = (type) => {
@@ -107,39 +192,80 @@ const ProductDetailPage = () => {
   };
 
   const handleAddToCart = async () => {
-    if (!isAuthenticated) {
-      toast.error('Please login to add items to cart');
-      navigate('/login');
-      return;
-    }
-    setAddingToCart(true);
-    try {
-      await addToCart(product.id, quantity, dynamicPrice?.variantId);
-      toast.success('Added to cart! 🎉');
-    } catch (error) {
-      console.error('Error adding to cart:', error);
-      toast.error('Failed to add to cart');
-    } finally {
-      setAddingToCart(false);
-    }
-  };
+  if (!isAuthenticated) {
+    toast.error('Please login to add items to cart');
+    navigate('/login');
+    return;
+  }
 
-  const handleBuyNow = async () => {
-    if (!isAuthenticated) {
-      toast.error('Please login to continue');
-      navigate('/login');
+  if (dynamicConfig?.isDynamic) {
+    const requiredKeys = (dynamicConfig.components || [])
+      .filter((c) => !c.isOptional)
+      .map((c) => c.componentKey);
+    const missing = requiredKeys.filter((k) => !sizeConfig[k]);
+    if (missing.length > 0) {
+      toast.error('Please select all sizes');
       return;
     }
-    setAddingToCart(true);
-    try {
-      await addToCart(product.id, quantity, dynamicPrice?.variantId);
-      navigate('/cart');
-    } catch (error) {
-      toast.error('Failed to proceed');
-    } finally {
-      setAddingToCart(false);
+  }
+
+  setAddingToCart(true);
+  try {
+    const configuration = dynamicConfig?.isDynamic ? sizeConfig : null;
+
+    // ✅ Pass the live-computed unit price so cart stores it
+    const unitPrice =
+      dynamicPrice?.total ??
+      dynamicPrice?.price ??
+      product?.price ??
+      null;
+
+    await addToCart(product.id, quantity, configuration, [], unitPrice);
+    toast.success('Added to cart! 🎉');
+  } catch (error) {
+    console.error('Error adding to cart:', error);
+    toast.error('Failed to add to cart');
+  } finally {
+    setAddingToCart(false);
+  }
+};
+
+const handleBuyNow = async () => {
+  if (!isAuthenticated) {
+    toast.error('Please login to continue');
+    navigate('/login');
+    return;
+  }
+
+  if (dynamicConfig?.isDynamic) {
+    const requiredKeys = (dynamicConfig.components || [])
+      .filter((c) => !c.isOptional)
+      .map((c) => c.componentKey);
+    const missing = requiredKeys.filter((k) => !sizeConfig[k]);
+    if (missing.length > 0) {
+      toast.error('Please select all sizes');
+      return;
     }
-  };
+  }
+
+  setAddingToCart(true);
+  try {
+    const configuration = dynamicConfig?.isDynamic ? sizeConfig : null;
+
+    const unitPrice =
+      dynamicPrice?.total ??
+      dynamicPrice?.price ??
+      product?.price ??
+      null;
+
+    await addToCart(product.id, quantity, configuration, [], unitPrice);
+    navigate('/cart');
+  } catch (error) {
+    toast.error('Failed to proceed');
+  } finally {
+    setAddingToCart(false);
+  }
+};
 
   const handleWishlist = async () => {
     if (!isAuthenticated) {
@@ -203,7 +329,6 @@ const ProductDetailPage = () => {
   const goldRate = dynamicPrice?.goldRate;
   const weightData = dynamicPrice?.weight;
 
-  // ⭐ Build color → images map
   const colorMediaMap = {};
   (product.colorMedia || []).forEach((m) => {
     if (m.type === 'video') return;
@@ -211,15 +336,13 @@ const ProductDetailPage = () => {
     colorMediaMap[m.color].push(m.url);
   });
 
-  // ⭐ Combine: selected color's images first, then other colors' images
   const selectedColorImages = colorMediaMap[selectedColor] || [];
   const otherColorImages = (product.colorMedia || [])
     .filter((m) => m.type !== 'video' && m.color !== selectedColor)
     .map((m) => m.url);
   const combinedMediaImages = [...new Set([...selectedColorImages, ...otherColorImages])];
 
-  // Fall back to product.images if no colorMedia at all
-  const fallbackImages = product.images?.length > 0 ? product.images : ['/api/placeholder/600/600'];
+  const fallbackImages = product.images?.length > 0 ? product.images : [PLACEHOLDER_LARGE];
   const images = combinedMediaImages.length > 0 ? combinedMediaImages : fallbackImages;
 
   const colorOptions = [
@@ -230,7 +353,6 @@ const ProductDetailPage = () => {
 
   const sizeOptions = ['US 5', 'US 6', 'US 7', 'US 8', 'US 9', 'US 10'];
 
-  // ⭐ Build karat list from variants
   const availableKarats = Array.from(
     new Set(
       (product.variants || [])
@@ -239,7 +361,6 @@ const ProductDetailPage = () => {
     )
   ).sort((a, b) => a - b);
 
-  // ⭐ Build color list from variants (fallback to all three)
   const availableColors = Array.from(
     new Set(
       (product.variants || [])
@@ -270,7 +391,6 @@ const ProductDetailPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 lg:gap-12">
           {/* ============== LEFT: IMAGE GALLERY ============== */}
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)]">
-            {/* Thumbnails: horizontal on mobile, vertical on sm+ */}
             <div className="flex flex-row sm:flex-col gap-2 sm:gap-3 sm:w-20 flex-shrink-0 sm:overflow-y-auto sm:max-h-[calc(100vh-7rem)] sm:pr-1 order-2 sm:order-1 overflow-x-auto sm:overflow-x-visible pb-1 sm:pb-0">
               {images.map((img, index) => (
                 <button
@@ -286,7 +406,11 @@ const ProductDetailPage = () => {
                     src={img} 
                     alt={`View ${index + 1}`}
                     className="w-full h-full object-cover"
-                    onError={(e) => { e.target.src = '/api/placeholder/100/100'; }}
+                    onError={(e) => {
+                      if (e.target.dataset.fallbackApplied) return;
+                      e.target.dataset.fallbackApplied = 'true';
+                      e.target.src = PLACEHOLDER_LARGE;
+                    }}
                   />
                 </button>
               ))}
@@ -301,7 +425,11 @@ const ProductDetailPage = () => {
                   src={images[activeImage]}
                   alt={product.name}
                   className="w-full h-full object-overflow"
-                  onError={(e) => { e.target.src = '/api/placeholder/600/600'; }}
+                  onError={(e) => {
+                    if (e.target.dataset.fallbackApplied) return;
+                    e.target.dataset.fallbackApplied = 'true';
+                    e.target.src = PLACEHOLDER_LARGE;
+                  }}
                 />
 
                 {product.isFeatured && (
@@ -362,7 +490,6 @@ const ProductDetailPage = () => {
 
           {/* ============== RIGHT: PRODUCT INFO ============== */}
           <div className="min-w-0">
-            {/* SKU, Wishlist, Share */}
             <div className="flex justify-between items-center mb-3 sm:mb-4 gap-2">
               <span className="text-xs sm:text-sm text-gray-500 truncate">SKU: {product.sku || 'N/A'}</span>
               <div className="flex gap-1 sm:gap-2 flex-shrink-0">
@@ -420,24 +547,45 @@ const ProductDetailPage = () => {
                     </div>
                   ) : (
                     <motion.span
-                      key={dynamicPrice?.price}
+                      key={dynamicPrice?.total || dynamicPrice?.price}
                       initial={{ scale: 0.95, opacity: 0.5 }}
                       animate={{ scale: 1, opacity: 1 }}
                       className="text-2xl sm:text-3xl font-bold text-gold-600"
                     >
-                      {dynamicPrice?.priceDisplay || `₹${product.price?.toLocaleString() || 0}`}
+                      {dynamicConfig?.isDynamic ? (
+                        dynamicPrice?.total != null ? (
+                          `₹${Number(dynamicPrice.total).toLocaleString('en-IN')}`
+                        ) : (
+                          `From ₹${product.price?.toLocaleString('en-IN') || 0}`
+                        )
+                      ) : (
+                        dynamicPrice?.priceDisplay || `₹${product.price?.toLocaleString('en-IN') || 0}`
+                      )}
                     </motion.span>
                   )}
                 </div>
-                <button
-                  onClick={() => setShowPriceBreakdown(!showPriceBreakdown)}
-                  className="text-xs sm:text-sm text-gold-600 hover:text-gold-700 flex items-center gap-1 font-medium self-start xs:self-auto"
-                >
-                  See Price Breakup 
-                  {showPriceBreakdown ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
+                {!dynamicConfig?.isDynamic && (
+                  <button
+                    onClick={() => setShowPriceBreakdown(!showPriceBreakdown)}
+                    className="text-xs sm:text-sm text-gold-600 hover:text-gold-700 flex items-center gap-1 font-medium self-start xs:self-auto"
+                  >
+                    See Price Breakup 
+                    {showPriceBreakdown ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                )}
               </div>
               <p className="text-xs text-gray-500 mt-1">Inclusive of all taxes</p>
+
+              {/* ✅ NEW: Dynamic product price breakdown */}
+              {dynamicConfig?.isDynamic && dynamicPrice?.componentBreakdowns && (
+                <div className="mt-3">
+                  <DynamicPriceBreakdown
+                    isOpen={showPriceBreakdown}
+                    onToggle={() => setShowPriceBreakdown(!showPriceBreakdown)}
+                    priceData={dynamicPrice}
+                  />
+                </div>
+              )}
 
               {goldRate && (
                 <div className="flex items-center gap-2 text-xs text-gray-500 mt-2 flex-wrap">
@@ -450,9 +598,8 @@ const ProductDetailPage = () => {
                 </div>
               )}
 
-              {/* ============== PRICE BREAKUP PANEL ============== */}
               <AnimatePresence>
-                {showPriceBreakdown && breakdown && (
+                {!dynamicConfig?.isDynamic && showPriceBreakdown && breakdown && (
                   <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
@@ -605,114 +752,150 @@ const ProductDetailPage = () => {
                         </span>
                       </div>
                     </div>
-
-                    {quantity > 1 && (
-                      <div className="mt-3 p-3 sm:p-4 bg-gradient-to-r from-gray-800 to-gray-900 dark:from-dark-card dark:to-dark-bg rounded-lg border-2 border-gold-600">
-                        <div className="flex justify-between items-center mb-2 gap-2">
-                          <span className="font-bold text-white text-sm sm:text-base">
-                            Total × {quantity} units
-                          </span>
-                          <span className="font-bold text-gold-400 text-lg sm:text-xl whitespace-nowrap">
-                            {dynamicPrice?.pricing?.totalPriceDisplay || `₹${((dynamicPrice?.price || product.price || 0) * quantity).toLocaleString()}`}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="mt-4 p-3 bg-gold-50 dark:bg-gold-900/20 rounded-lg border border-gold-200 dark:border-gold-800">
-                      <p className="text-xs text-gold-700 dark:text-gold-400 text-center">
-                        <Info className="h-3 w-3 inline mr-1" />
-                        Price calculated in real-time based on live metal rates, selected karat, size & color
-                      </p>
-                    </div>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
 
-            {/* ============== 1. METAL PURITY ============== */}
-            <div className="mb-4 sm:mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">1. METAL PURITY</span>
-                <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
-              </div>
-              <div className="flex gap-2 sm:gap-3 flex-wrap">
-                {(availableKarats.length > 0 ? availableKarats : [9, 14, 18]).map((karat) => (
-                  <button
-                    key={karat}
-                    onClick={() => setSelectedMetal(karat)}
-                    className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg border-2 transition font-medium text-sm sm:text-base ${
-                      selectedMetal === karat
-                        ? 'border-gold-600 bg-gold-50 dark:bg-gold-900/20 text-gold-600'
-                        : 'border-gray-200 dark:border-dark-border hover:border-gold-300 text-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    {karat}KT
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* ============== 2. COLOR ============== */}
-            <div className="mb-4 sm:mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">2. COLOR</span>
-                <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
-              </div>
-              <div className="flex gap-2 sm:gap-3 flex-wrap">
-                {visibleColors.map((c) => (
-                  <button
-                    key={c.name}
-                    onClick={() => setSelectedColor(c.name)}
-                    className={`flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-3 rounded-lg border-2 transition ${
-                      selectedColor === c.name
-                        ? 'border-gold-600 bg-gold-50 dark:bg-gold-900/20'
-                        : 'border-gray-200 dark:border-dark-border hover:border-gold-300'
-                    }`}
-                  >
-                    <span 
-                      className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border border-gray-300 flex-shrink-0"
-                      style={{ backgroundColor: c.color }}
-                    />
-                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {c.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* ============== 3. JEWELLERY SIZE ============== */}
-            <div className="mb-4 sm:mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">3. JEWELLERY SIZE</span>
-                <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
-              </div>
-              <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 xs:gap-3">
-                <select
-                  value={selectedSize}
-                  onChange={(e) => setSelectedSize(e.target.value)}
-                  className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 bg-white dark:bg-dark-card text-gray-800 dark:text-white text-sm sm:text-base"
-                >
-                  {sizeOptions.map(size => (
-                    <option key={size} value={size}>{size}</option>
+            {!dynamicConfig?.isDynamic && (
+              <div className="mb-4 sm:mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">1. METAL PURITY</span>
+                  <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
+                </div>
+                <div className="flex gap-2 sm:gap-3 flex-wrap">
+                  {(availableKarats.length > 0 ? availableKarats : [9, 14, 18]).map((karat) => (
+                    <button
+                      key={karat}
+                      onClick={() => setSelectedMetal(karat)}
+                      className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg border-2 transition font-medium text-sm sm:text-base ${
+                        selectedMetal === karat
+                          ? 'border-gold-600 bg-gold-50 dark:bg-gold-900/20 text-gold-600'
+                          : 'border-gray-200 dark:border-dark-border hover:border-gold-300 text-gray-700 dark:text-gray-300'
+                      }`}
+                    >
+                      {karat}KT
+                    </button>
                   ))}
-                </select>
-                <button
-                  onClick={() => setShowSizeGuide(true)}
-                  className="flex items-center justify-center gap-2 text-gold-600 hover:text-gold-700 text-xs sm:text-sm font-medium whitespace-nowrap py-2 xs:py-0"
-                >
-                  <Ruler className="h-4 w-4 flex-shrink-0" /> Find Your Size
-                </button>
+                </div>
               </div>
-              {weightData && (
-                <p className="text-xs text-gray-500 mt-2">
-                  Estimated weight: <strong>{weightData.display}</strong> for {selectedSize}
-                </p>
-              )}
-            </div>
+            )}
 
-            {/* SPECIFICATION BOX */}
+            {!dynamicConfig?.isDynamic && (
+              <div className="mb-4 sm:mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">2. COLOR</span>
+                  <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
+                </div>
+                <div className="flex gap-2 sm:gap-3 flex-wrap">
+                  {visibleColors.map((c) => (
+                    <button
+                      key={c.name}
+                      onClick={() => setSelectedColor(c.name)}
+                      className={`flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-3 rounded-lg border-2 transition ${
+                        selectedColor === c.name
+                          ? 'border-gold-600 bg-gold-50 dark:bg-gold-900/20'
+                          : 'border-gray-200 dark:border-dark-border hover:border-gold-300'
+                      }`}
+                    >
+                      <span 
+                        className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border border-gray-300 flex-shrink-0"
+                        style={{ backgroundColor: c.color }}
+                      />
+                      <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                        {c.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {dynamicConfig?.isDynamic ? (
+              <div className="mb-4 sm:mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
+                    3. CHOOSE YOUR SIZES
+                  </span>
+                  <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
+                </div>
+
+                {configLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Loader2 className="h-4 w-4 animate-spin text-gold-600" />
+                    Loading size options...
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {(dynamicConfig.components || []).map((comp) => {
+                      const selectedValue = sizeConfig[comp.componentKey] || '';
+                      const options = comp.sizingOptions || [];
+                      return (
+                        <div key={comp.componentKey}>
+                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
+                            {comp.name}
+                            {comp.isOptional && (
+                              <span className="ml-2 text-gray-400 font-normal">(optional)</span>
+                            )}
+                          </label>
+                          <select
+                            value={selectedValue}
+                            onChange={(e) =>
+                              setSizeConfig((prev) => ({
+                                ...prev,
+                                [comp.componentKey]: e.target.value,
+                              }))
+                            }
+                            className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 bg-white dark:bg-dark-card text-gray-800 dark:text-white text-sm sm:text-base"
+                          >
+                            {options.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-xs text-gray-500 mt-3">
+                  <Info className="h-3 w-3 inline mr-1" />
+                  Sizes affect the gold weight and final price. The price updates live as you choose.
+                </p>
+              </div>
+            ) : (
+              <div className="mb-4 sm:mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">3. JEWELLERY SIZE</span>
+                  <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
+                </div>
+                <div className="flex flex-col xs:flex-row items-stretch xs:items-center gap-2 xs:gap-3">
+                  <select
+                    value={selectedSize}
+                    onChange={(e) => setSelectedSize(e.target.value)}
+                    className="flex-1 px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 bg-white dark:bg-dark-card text-gray-800 dark:text-white text-sm sm:text-base"
+                  >
+                    {sizeOptions.map(size => (
+                      <option key={size} value={size}>{size}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => setShowSizeGuide(true)}
+                    className="flex items-center justify-center gap-2 text-gold-600 hover:text-gold-700 text-xs sm:text-sm font-medium whitespace-nowrap py-2 xs:py-0"
+                  >
+                    <Ruler className="h-4 w-4 flex-shrink-0" /> Find Your Size
+                  </button>
+                </div>
+                {weightData && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Estimated weight: <strong>{weightData.display}</strong> for {selectedSize}
+                  </p>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 xs:grid-cols-4 gap-3 p-3 sm:p-4 bg-gray-50 dark:bg-dark-card rounded-xl mb-4 sm:mb-6">
               <div className="text-center">
                 <Gem className="h-5 w-5 sm:h-6 sm:w-6 text-gold-600 mx-auto mb-1" />

@@ -5,8 +5,9 @@ import { useWishlist } from '../context/WishlistContext';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { getProductImage } from '../lib/productImage';   // ✅ NEW
 
-const PLACEHOLDER = '/api/placeholder/400/400';
+const PLACEHOLDER = '/placeholder.png';   // ✅ FIX (was /api/placeholder/400/400)
 
 const WishlistPage = () => {
   const { isAuthenticated } = useAuth();
@@ -62,17 +63,8 @@ const WishlistPage = () => {
     toast.success('Wishlist cleared');
   };
 
-  const renderImage = (item) => {
-    const product = item.product;
-    if (!product) return PLACEHOLDER;
-    return (
-      product.images?.[0] ||
-      product.colorMedia?.[0]?.url ||
-      PLACEHOLDER
-    );
-  };
+  // ✅ Removed local renderImage — the shared helper handles all shapes.
 
-  // ============== LOADING ==============
   if (loading && wishlist.length === 0) {
     return (
       <div className="container-custom py-12">
@@ -84,7 +76,6 @@ const WishlistPage = () => {
     );
   }
 
-  // ============== EMPTY ==============
   if (wishlist.length === 0) {
     return (
       <div className="container-custom py-8 sm:py-12">
@@ -119,7 +110,6 @@ const WishlistPage = () => {
     );
   }
 
-  // ============== GRID ==============
   return (
     <div className="container-custom py-6 sm:py-8">
       <Link
@@ -176,21 +166,19 @@ const WishlistPage = () => {
               key={item.id || item.productId}
               className="group bg-white dark:bg-dark-card rounded-xl shadow-md hover:shadow-xl transition overflow-hidden border border-gray-100 dark:border-dark-border flex flex-col"
             >
-              {/* Image */}
               <div className="relative aspect-square bg-gray-50 dark:bg-dark-bg overflow-hidden">
                 <Link to={product ? `/products/${product.id}` : '#'}>
                   <img
-                    src={renderImage(item)}
+                    src={getProductImage(product)}    /* ✅ FIX */
                     alt={product?.name || 'Wishlist item'}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     onError={(e) => {
                       e.target.onerror = null;
-                      e.target.src = PLACEHOLDER;
+                      e.target.src = PLACEHOLDER;    /* now /placeholder.png */
                     }}
                   />
                 </Link>
 
-                {/* Remove X */}
                 <button
                   onClick={() => handleRemove(item)}
                   disabled={isPending}
@@ -214,7 +202,6 @@ const WishlistPage = () => {
                 )}
               </div>
 
-              {/* Body */}
               <div className="p-3 sm:p-4 flex flex-col flex-1">
                 {product?.category && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 truncate">

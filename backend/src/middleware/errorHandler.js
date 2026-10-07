@@ -1,3 +1,5 @@
+const multer = require('multer');
+
 const errorHandler = (err, req, res, next) => {
   console.error('Error:', err);
 
@@ -11,9 +13,9 @@ const errorHandler = (err, req, res, next) => {
 
   // Validation errors
   if (err.name === 'ValidationError') {
-    return res.status(400).json({ 
-      message: 'Validation error', 
-      errors: Object.values(err.errors).map(e => e.message) 
+    return res.status(400).json({
+      message: 'Validation error',
+      errors: Object.values(err.errors).map(e => e.message)
     });
   }
 
@@ -28,9 +30,9 @@ const errorHandler = (err, req, res, next) => {
 
   // Prisma errors
   if (err.code === 'P2002') {
-    return res.status(409).json({ 
-      message: 'Duplicate entry', 
-      field: err.meta?.target 
+    return res.status(409).json({
+      message: 'Duplicate entry',
+      field: err.meta?.target
     });
   }
 
@@ -39,10 +41,10 @@ const errorHandler = (err, req, res, next) => {
   }
 
   // Default error
-  res.status(500).json({ 
-    message: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
-      : err.message 
+  res.status(500).json({
+    message: process.env.NODE_ENV === 'production'
+      ? 'Internal server error'
+      : err.message
   });
 };
 

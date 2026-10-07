@@ -1,10 +1,26 @@
 const prisma = require('../lib/prisma');
 const { toNum } = require('../lib/decimal');
 const couponService = require('./coupon.service');
+const dynamicPricing = require('./dynamicPricing.service'); // ✅ NEW
 
 class OrderService {
   // ============== CREATE ORDER ==============
-  async createOrder({ userId, userEmail, shippingAddress, phone, paymentMethod, couponCode, notes }) {
+  //
+  // ✅ NEW: accepts `acceptPriceChange` flag from the client.
+  //         If dynamic product prices have moved beyond the reconfirm
+  //         threshold since the customer's lock was created, the order
+  //         is rejected with a structured PRICE_STALE error unless the
+  //         customer explicitly sends acceptPriceChange: true.
+  async createOrder({
+    userId,
+    userEmail,
+    shippingAddress,
+    phone,
+    paymentMethod,
+    couponCode,
+    notes,
+    acceptPriceChange = false, // ✅ NEW
+  }) {
     // 1. Fetch cart
     const cartItems = await prisma.cart.findMany({
       where: { userId },
@@ -17,12 +33,16 @@ class OrderService {
       throw err;
     }
 
-    // 2. Calculate subtotal + verify stock
+    // 2. Compute each item's effective price, detect dynamic products,
+    //    and collect any stale items.
     let subtotal = 0;
     const orderItems = [];
+    const staleItems = []; // ✅ NEW
 
     for (const item of cartItems) {
-      const product = await prisma.product.findUnique({ where: { id: item.productId } });
+      const product = await prisma.product.findUnique({
+        where: { id: item.productId },
+      });
 
       if (!product) {
         const err = new Error(`Product ${item.productId} not found`);
@@ -35,12 +55,60 @@ class OrderService {
         throw err;
       }
 
-      subtotal += toNum(product.price) * item.quantity;
-      orderItems.push({
-        productId: item.productId,
-        quantity: item.quantity,
-        price: toNum(product.price),
-      });
+      // ✅ NEW: dynamic product handling
+      if (item.configuration) {
+        const pricingResult = await dynamicPricing.calculatePriceWithLock(item);
+
+        if (!pricingResult) {
+          const err = new Error(
+            `Could not compute price for ${product.name}`
+          );
+          err.statusCode = 400;
+          throw err;
+        }
+
+        // If lock expired and delta exceeds threshold → collect as stale
+        if (pricingResult.needsReconfirm) {
+          staleItems.push({
+            cartItemId: item.id,
+            productId: item.productId,
+            productName: product.name,
+            lockedPrice: pricingResult.lockedPrice,
+            currentPrice: pricingResult.currentPrice,
+            deltaPct: pricingResult.deltaPct,
+          });
+        }
+
+        const effectivePrice = pricingResult.effectivePrice ?? pricingResult.currentPrice;
+        subtotal += effectivePrice * item.quantity;
+        orderItems.push({
+          productId: item.productId,
+          quantity: item.quantity,
+          price: effectivePrice,
+          configuration: item.configuration, // ✅ NEW: save config on the OrderItem
+        });
+      } else {
+        // Regular product — original behavior
+        const price = toNum(product.price);
+        subtotal += price * item.quantity;
+        orderItems.push({
+          productId: item.productId,
+          quantity: item.quantity,
+          price,
+          // no configuration
+        });
+      }
+    }
+
+    // ✅ NEW: reject if stale items exist and the customer hasn't confirmed
+    if (staleItems.length > 0 && !acceptPriceChange) {
+      const err = new Error(
+        'Prices have changed since you added these items to your cart.'
+      );
+      err.statusCode = 400;
+      err.code = 'PRICE_STALE';
+      err.staleItems = staleItems;
+      throw err;
     }
 
     // 3. Load store settings
@@ -59,7 +127,7 @@ class OrderService {
       }
     } catch (_) {}
 
-    // 4. Apply coupon (if provided)
+    // 4. Apply coupon (if provided) — UNCHANGED
     let coupon = null;
     let discount = 0;
     let freeShipping = false;
@@ -92,7 +160,9 @@ class OrderService {
       if (found.perUserLimit != null) {
         const usageCount = await couponService.countUserUsage(found.id, userId);
         if (usageCount >= found.perUserLimit) {
-          const err = new Error('You have already used this coupon the maximum number of times');
+          const err = new Error(
+            'You have already used this coupon the maximum number of times'
+          );
           err.statusCode = 400;
           throw err;
         }
@@ -103,15 +173,7 @@ class OrderService {
       coupon = found;
     }
 
-    // 5. Compute totals
-    //
-    // NOTE: product.price ALREADY includes GST (the product page shows
-    // "Inclusive of all taxes"). We do NOT add tax on top of the subtotal —
-    // we only extract the included portion for invoices/reports.
-    //
-    // Correct math:
-    //   customer total = discountedSubtotal + shipping
-    //   embedded tax   = discountedSubtotal − (discountedSubtotal / (1 + rate/100))
+    // 5. Compute totals — UNCHANGED
     const discountedSubtotal = Math.max(0, subtotal - discount);
 
     let shipping = shippingCost;
@@ -121,7 +183,6 @@ class OrderService {
 
     const total = discountedSubtotal + shipping;
 
-    // Extract the GST that's already inside the price (record-keeping only).
     const tax = discountedSubtotal - discountedSubtotal / (1 + taxRate / 100);
 
     // 6. Transaction: create order + items + payment + coupon usage
@@ -147,7 +208,9 @@ class OrderService {
         include: {
           items: {
             include: {
-              product: { include: { colorMedia: { orderBy: { sortOrder: 'asc' } } } },
+              product: {
+                include: { colorMedia: { orderBy: { sortOrder: 'asc' } } },
+              },
             },
           },
           payment: true,
@@ -185,7 +248,7 @@ class OrderService {
       return newOrder;
     });
 
-    // 7. Save address back to profile (non-fatal)
+    // 7. Save address back to profile — UNCHANGED
     if (shippingAddress || phone) {
       try {
         await prisma.user.update({
@@ -200,7 +263,7 @@ class OrderService {
       }
     }
 
-    // 8. Decrement stock
+    // 8. Decrement stock — UNCHANGED
     for (const item of cartItems) {
       await prisma.product.update({
         where: { id: item.productId },
@@ -208,10 +271,10 @@ class OrderService {
       });
     }
 
-    // 9. Clear cart
+    // 9. Clear cart — UNCHANGED
     await prisma.cart.deleteMany({ where: { userId } });
 
-    // 10. Auto-generate invoice (non-blocking — never fail the order if this breaks)
+    // 10. Auto-generate invoice — UNCHANGED
     try {
       const invoiceService = require('./invoice.service');
       await invoiceService.generateForOrder(order.id);

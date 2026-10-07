@@ -11,6 +11,7 @@ exports.createOrder = async (req, res) => {
       paymentMethod: req.body.paymentMethod,
       couponCode: req.body.couponCode,
       notes: req.body.notes,
+      acceptPriceChange: req.body.acceptPriceChange === true, // ✅ NEW
     });
 
     res.status(201).json({
@@ -20,6 +21,16 @@ exports.createOrder = async (req, res) => {
     });
   } catch (error) {
     console.error('Create order error:', error);
+
+    // ✅ NEW: structured response for stale prices
+    if (error.code === 'PRICE_STALE') {
+      return res.status(400).json({
+        code: 'PRICE_STALE',
+        message: error.message,
+        staleItems: error.staleItems || [],
+      });
+    }
+
     if (error.statusCode) {
       return res.status(error.statusCode).json({ message: error.message });
     }

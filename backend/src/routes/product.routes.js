@@ -10,8 +10,14 @@ const { authenticate, isAdmin } = require('../middleware/auth');
 // Get all products
 router.get('/', productController.getAllProducts);
 
-// DYNAMIC PRICE 
+// DYNAMIC PRICE (legacy — kept for backward compatibility)
 router.get('/:productId/calculate-price', productController.calculateDynamicPrice);
+
+// ✅ NEW: Dynamic product config structure (for size selectors)
+router.get('/:id/dynamic-config', productController.getDynamicConfig);
+
+// ✅ NEW: Dynamic product price preview (for live price updates)
+router.post('/:id/price-preview', productController.previewDynamicPrice);
 
 // Get single product
 router.get('/:id', productController.getProductById);
@@ -24,7 +30,7 @@ router.post('/premium', authenticate, isAdmin, productController.createProductWi
 // Standard create
 router.post('/', authenticate, isAdmin, productController.createProduct);
 
-// PREMIUM UPDATE — handles variants, media, screw options 
+// PREMIUM UPDATE — handles variants, media, screw options
 router.put('/:id/premium', authenticate, isAdmin, productController.updateProductWithVariants);
 
 // Standard update — scalar fields only

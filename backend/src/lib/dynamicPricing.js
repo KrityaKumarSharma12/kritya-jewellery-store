@@ -80,8 +80,12 @@ function computeComponentPrice(component, selectedSize, sizingRules, liveRates, 
   const baseWeight = Number(component.baseWeightGrams);
   const grossWeight = weight(baseWeight + weightSurgeGrams);
 
-  // Stone weight: precomputed on the component, in grams
-  const stoneWeight = Number(component.stoneWeightGrams || 0);
+   // Stone weight: recompute from gemstones JSON every time.
+  // 1 carat = 0.2 grams.
+  const stoneWeight = weight(
+    (Array.isArray(component.gemstones) ? component.gemstones : [])
+      .reduce((sum, g) => sum + Number(g.carats || 0) * GRAMS_PER_CARAT, 0)
+  );
 
   // Net gold weight = gross weight − stone weight
   const netWeight = weight(Math.max(0, grossWeight - stoneWeight));

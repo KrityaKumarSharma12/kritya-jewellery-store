@@ -24,18 +24,13 @@ export const CartProvider = ({ children }) => {
 
   const { user, token } = useAuth();
 
-  // Fetch store settings
   const fetchSettings = useCallback(async () => {
     try {
       const response = await axios.get('http://localhost:5000/api/settings/public');
       setSettings(response.data);
     } catch (error) {
       console.error('Error fetching settings:', error);
-      setSettings({
-        taxRate: 3,
-        shippingCost: 0,
-        freeShippingAbove: 5000,
-      });
+      setSettings({ taxRate: 3, shippingCost: 0, freeShippingAbove: 5000 });
     }
   }, []);
 
@@ -76,7 +71,6 @@ export const CartProvider = ({ children }) => {
 
   const applyCoupon = async (code, subtotalOverride) => {
     setCouponError('');
-
     const codeStr = (code || '').trim().toUpperCase();
     if (!codeStr) {
       setCouponError('Enter a coupon code');
@@ -130,12 +124,10 @@ export const CartProvider = ({ children }) => {
 
   const getDiscount = () => {
     if (!appliedCoupon) return 0;
-
     const subtotal = getSubtotal();
     if (subtotal <= 0) return 0;
 
     let discount = 0;
-
     if (appliedCoupon.type === 'PERCENTAGE') {
       discount = (subtotal * appliedCoupon.value) / 100;
       if (appliedCoupon.maxDiscount != null && discount > appliedCoupon.maxDiscount) {
@@ -151,18 +143,32 @@ export const CartProvider = ({ children }) => {
     return Math.round(discount * 100) / 100;
   };
 
-  const hasFreeShippingFromCoupon = () => {
-    return appliedCoupon?.type === 'FREE_SHIPPING';
+  const hasFreeShippingFromCoupon = () => appliedCoupon?.type === 'FREE_SHIPPING';
+
+  // ✅ THE FIX: prefer the server-enriched price.
+  //    Priority: effectivePrice → currentPrice → lockedPrice → product.price
+  //    This makes the cart show the LIVE / locked price for dynamic products.
+  const getItemUnitPrice = (item) => {
+    const candidates = [
+      item?.effectivePrice,
+      item?.currentPrice,
+      item?.lockedPrice,
+      item?.product?.price,
+    ];
+    for (const c of candidates) {
+      const n = Number(c);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 0;
   };
 
   const getSubtotal = () => {
     return cartItems.reduce((sum, item) => {
-      const price = item.product?.price || 0;
+      const price = getItemUnitPrice(item);
       return sum + (price * (item.quantity || 0));
     }, 0);
   };
 
-  // ✅ FIX: Extract GST that's already inside the price (inclusive model).
   const getTax = () => {
     const subtotal = getSubtotal();
     const discount = getDiscount();
@@ -184,7 +190,6 @@ export const CartProvider = ({ children }) => {
     return shippingCost;
   };
 
-  // ✅ FIX: Do NOT add tax on top — price is GST-inclusive.
   const getTotal = () => {
     const subtotal = getSubtotal();
     const discount = getDiscount();
@@ -211,7 +216,6 @@ export const CartProvider = ({ children }) => {
     return remaining > 0 ? remaining : 0;
   };
 
-  // ✅ FIX: total = discountedSubtotal + shipping (no added tax).
   const getPriceBreakdown = () => {
     const subtotal = getSubtotal();
     const discount = getDiscount();
@@ -238,14 +242,19 @@ export const CartProvider = ({ children }) => {
     };
   };
 
-  const addToCart = async (productId, quantity = 1) => {
+  // ✅ No priceInfo param needed — backend computes it from `configuration`.
+  const addToCart = async (productId, quantity = 1, configuration = null, skippedComponents = []) => {
     if (!user) {
       const guestCart = JSON.parse(localStorage.getItem('guestCart') || '[]');
-      const existingItem = guestCart.find(item => item.productId === productId);
+      const configKey = configuration ? JSON.stringify(configuration) : null;
+      const existingItem = guestCart.find((item) => {
+        const itemKey = item.configuration ? JSON.stringify(item.configuration) : null;
+        return item.productId === productId && itemKey === configKey;
+      });
       if (existingItem) {
         existingItem.quantity += quantity;
       } else {
-        guestCart.push({ productId, quantity });
+        guestCart.push({ productId, quantity, configuration });
       }
       localStorage.setItem('guestCart', JSON.stringify(guestCart));
       setCartItems(guestCart);
@@ -253,8 +262,14 @@ export const CartProvider = ({ children }) => {
     }
 
     try {
-      await axios.post('http://localhost:5000/api/cart',
-        { productId, quantity },
+      await axios.post(
+        'http://localhost:5000/api/cart',
+        {
+          productId,
+          quantity,
+          configuration: configuration || undefined,
+          skippedComponents: skippedComponents.length > 0 ? skippedComponents : undefined,
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       await fetchCart();
@@ -316,7 +331,6 @@ export const CartProvider = ({ children }) => {
       setCartItems([]);
       return;
     }
-
     try {
       await axios.delete('http://localhost:5000/api/cart', {
         headers: { Authorization: `Bearer ${token}` }
@@ -327,13 +341,8 @@ export const CartProvider = ({ children }) => {
     }
   };
 
-  const getTotalItems = () => {
-    return cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-  };
-
-  const getTotalPrice = () => {
-    return getTotal();
-  };
+  const getTotalItems = () => cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const getTotalPrice = () => getTotal();
 
   const value = {
     cartItems,
@@ -364,6 +373,7 @@ export const CartProvider = ({ children }) => {
     isEligibleForFreeShipping,
     getAmountForFreeShipping,
     hasFreeShippingFromCoupon,
+    getItemUnitPrice,   // ✅ export for CartPage
   };
 
   return (

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import ReturnRequestModal from '../components/ReturnRequestModal';
+import { getProductImage } from '../lib/productImage';   // ✅ NEW
 
 const CustomerProfilePage = () => {
   const { user, token, logout, updateUser } = useAuth();
@@ -14,7 +15,7 @@ const CustomerProfilePage = () => {
   const [wishlist, setWishlist] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [returnOrder, setReturnOrder] = useState(null); // ⭐ which order the modal is open for
+  const [returnOrder, setReturnOrder] = useState(null);
   const [formData, setFormData] = useState({
     name: user?.name || '',
     phone: user?.phone || '',
@@ -99,7 +100,6 @@ const CustomerProfilePage = () => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  // ⭐ Return status badge colors
   const getReturnStatusColor = (status) => {
     const colors = {
       PENDING: 'bg-yellow-100 text-yellow-800',
@@ -114,17 +114,13 @@ const CustomerProfilePage = () => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
-  // ⭐ Safety helper — returns array even if backend didn't include it
   const getOrderReturns = (order) => {
     return Array.isArray(order?.returns) ? order.returns : [];
   };
 
-  // ⭐ Can this order be returned right now?
   const canReturn = (order) => {
     if (!order || order.status !== 'DELIVERED') return false;
     const returns = getOrderReturns(order);
-    // Hide button if there's any existing return in a non-terminal-rejected state
-    // (REJECTED = don't allow re-request to prevent abuse)
     return returns.length === 0;
   };
 
@@ -213,7 +209,7 @@ const CustomerProfilePage = () => {
                 <div className="space-y-4">
                   {orders.map((order) => {
                     const orderReturns = getOrderReturns(order);
-                    const latestReturn = orderReturns[0]; // most recent
+                    const latestReturn = orderReturns[0];
                     const showReturnButton = canReturn(order);
 
                     return (
@@ -234,7 +230,6 @@ const CustomerProfilePage = () => {
                               <span className={`px-2 sm:px-3 py-1 text-[10px] sm:text-xs rounded-full ${getStatusColor(order.status)}`}>
                                 {order.status}
                               </span>
-                              {/* ⭐ Return status badge */}
                               {latestReturn && (
                                 <span className={`px-2 sm:px-3 py-1 text-[10px] sm:text-xs rounded-full ${getReturnStatusColor(latestReturn.status)}`}>
                                   {latestReturn.status === 'PENDING' && 'Return Pending'}
@@ -256,16 +251,12 @@ const CustomerProfilePage = () => {
                           {order.items?.map((item) => (
                             <div key={item.id} className="flex items-center gap-2 sm:gap-3">
                               <img
-                                src={
-                                  item.product?.images?.[0] ||
-                                  item.product?.colorMedia?.[0]?.url ||
-                                  '/api/placeholder/50/50'
-                                }
-                                alt={item.product?.name}
+                                src={getProductImage(item.product)}   /* ✅ FIX */
+                                alt={item.product?.name || 'Product'}
                                 className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded flex-shrink-0"
                                 onError={(e) => {
                                   e.target.onerror = null;
-                                  e.target.src = '/api/placeholder/50/50';
+                                  e.target.src = '/placeholder.png';   /* ✅ FIX */
                                 }}
                               />
                               <div className="flex-1 min-w-0">
@@ -277,7 +268,6 @@ const CustomerProfilePage = () => {
                           ))}
                         </div>
 
-                        {/* ⭐ Return button */}
                         {showReturnButton && (
                           <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end">
                             <button
@@ -314,16 +304,12 @@ const CustomerProfilePage = () => {
                   {wishlist.map((item) => (
                     <div key={item.id} className="flex items-center gap-3 sm:gap-4 p-3 border border-gray-200 rounded-lg">
                       <img
-                        src={
-                          item.product?.images?.[0] ||
-                          item.product?.colorMedia?.[0]?.url ||
-                          '/api/placeholder/80/80'
-                        }
-                        alt={item.product?.name}
+                        src={getProductImage(item.product)}   /* ✅ FIX */
+                        alt={item.product?.name || 'Product'}
                         className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded flex-shrink-0"
                         onError={(e) => {
                           e.target.onerror = null;
-                          e.target.src = '/api/placeholder/80/80';
+                          e.target.src = '/placeholder.png';   /* ✅ FIX */
                         }}
                       />
                       <div className="flex-1 min-w-0">
@@ -469,7 +455,6 @@ const CustomerProfilePage = () => {
         </div>
       </div>
 
-      {/* ⭐ Return modal — only mounts when an order is selected */}
       {returnOrder && (
         <ReturnRequestModal
           order={returnOrder}

@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
+import { PLACEHOLDER_THUMBNAIL } from '../config/constants';
 
 const ProductCard = ({ product }) => {
   const { addToCart } = useCart();
@@ -23,7 +24,6 @@ const ProductCard = ({ product }) => {
 
     setIsAdding(true);
     try {
-      // FIX: Pass the default variant if it exists
       const defaultVariant = product.variants?.[0] || null;
       await addToCart(product.id, 1, defaultVariant?.id || null);
       toast.success('Added to cart! 🎉');
@@ -51,10 +51,8 @@ const ProductCard = ({ product }) => {
     }
   };
 
-  // Get the first variant or use product data
   const variant = product.variants?.[0] || product;
   
-  // FIX: Handle price safely
   const price = product.price || variant.currentPrice || variant.basePrice || variant.priceData?.price || 0;
   const originalPrice = product.originalPrice || variant.originalPrice || variant.basePrice || price;
   const discount = product.discount || variant.discount || 0;
@@ -104,10 +102,14 @@ const ProductCard = ({ product }) => {
       <Link to={`/products/${product.id}`} className="block">
         <div className="relative h-64 overflow-hidden bg-gray-100">
           <img
-            src={product.images?.[0]?.url || product.images?.[0] || '/api/placeholder/400/400'}
+            src={product.images?.[0]?.url || product.images?.[0] || PLACEHOLDER_THUMBNAIL}
             alt={product.name}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
-            onError={(e) => { e.target.src = '/api/placeholder/400/400'; }}
+            onError={(e) => {
+              if (e.target.dataset.fallbackApplied) return;
+              e.target.dataset.fallbackApplied = 'true';
+              e.target.src = PLACEHOLDER_THUMBNAIL;
+            }}
           />
           {stock === 0 && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">

@@ -69,7 +69,11 @@ class InvoiceService {
       itemsSnapshot.reduce((s, i) => s + i.total, 0) * 100
     ) / 100;
 
-    const tax = Math.round(subtotal * (taxRatePct / 100) * 100) / 100;
+        // ✅ FIX: item prices are GST-inclusive. Extract the embedded tax
+    //         instead of adding it on top of the subtotal.
+    const tax = Math.round(
+      (subtotal - subtotal / (1 + taxRatePct / 100)) * 100
+    ) / 100;
 
     // Read store settings for shipping/free threshold
     let shippingCost = 0;
@@ -101,10 +105,12 @@ class InvoiceService {
       }
     } catch (_) {}
 
-    // Total is RECOMPUTED, not read from order.total
-    const total = Math.round((subtotal - discount + tax + shipping) * 100) / 100;
+       // ✅ FIX: customer pays subtotal − discount + shipping.
+    //         Tax is inside the subtotal, not added on top.
+    const total = Math.round((subtotal - discount + shipping) * 100) / 100;
 
-    // Dev sanity log
+    
+        // Dev sanity log — tax is the *embedded* portion, not added.
     if (process.env.NODE_ENV !== 'production') {
       console.log('[invoice] computed:', {
         orderId: order.id,

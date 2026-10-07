@@ -10,6 +10,10 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { getProductImage } from '../lib/productImage';   // ✅ NEW
+
+const fmtINR = (n) =>
+  '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
 const PaymentPage = () => {
   const navigate = useNavigate();
@@ -19,9 +23,9 @@ const PaymentPage = () => {
     getTotalItems,
     getPriceBreakdown,
     settings,
-    // ⭐ Coupon state from CartContext
     appliedCoupon,
     removeCoupon,
+    getItemUnitPrice,        // ✅ use the resolved unit price
   } = useCart();
   const { user, token } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -34,10 +38,8 @@ const PaymentPage = () => {
   });
   const [error, setError] = useState('');
 
-  // Re-sync form when user profile loads/changes
   useEffect(() => {
     if (!user) return;
-
     setFormData((prev) => ({
       ...prev,
       address: prev.address || user.address || '',
@@ -54,7 +56,6 @@ const PaymentPage = () => {
     });
   };
 
-  // ============== LOAD RAZORPAY SCRIPT ==============
   const loadRazorpayScript = () =>
     new Promise((resolve) => {
       if (window.Razorpay) return resolve(true);
@@ -65,7 +66,6 @@ const PaymentPage = () => {
       document.body.appendChild(script);
     });
 
-  // ============== VERIFY PAYMENT WITH BACKEND ==============
   const verifyPayment = async (rzpResponse, internalOrderId) => {
     const verifyRes = await axios.post(
       'http://localhost:5000/api/payment/verify',
@@ -80,7 +80,6 @@ const PaymentPage = () => {
     return verifyRes.data;
   };
 
-  // ============== HANDLE SUBMIT ==============
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -91,7 +90,6 @@ const PaymentPage = () => {
       setLoading(false);
       return;
     }
-
     if (!formData.phone) {
       setError('Please enter your phone number');
       setLoading(false);
@@ -99,18 +97,18 @@ const PaymentPage = () => {
     }
 
     try {
-      // 1. Create the internal Order + OrderItems
-      // ⭐ Include couponCode so the backend can apply the discount
       const orderData = {
         shippingAddress: formData.address,
         phone: formData.phone,
         paymentMethod: paymentMethod,
         notes: formData.notes,
         couponCode: appliedCoupon?.code || null,
+        // Note: backend recomputes prices from config — items[] below is
+        // only used as a hint, safe to omit too.
         items: cartItems.map(item => ({
           productId: item.productId,
           quantity: item.quantity,
-          price: item.product?.price || 0
+          price: getItemUnitPrice(item),
         })),
         subtotal: breakdown.subtotal,
         discount: breakdown.discount,
@@ -126,25 +124,18 @@ const PaymentPage = () => {
       );
 
       const internalOrderId = response.data.order?.id;
-
       if (!internalOrderId) {
         throw new Error('Order was not created — no order id returned');
       }
 
-      // ============== COD: original flow ==============
       if (paymentMethod === 'COD') {
         await clearCart();
-        removeCoupon();       // ⭐ clear coupon after successful order
+        removeCoupon();
         toast.success('Order placed successfully! 🎉');
-        navigate('/profile', {
-          state: { orderSuccess: true, orderId: internalOrderId },
-        });
+        navigate('/profile', { state: { orderSuccess: true, orderId: internalOrderId } });
         return;
       }
 
-      // ============== RAZORPAY FLOW (CARD, UPI, NETBANKING) ==============
-
-      // 2. Load the Razorpay checkout script
       const scriptLoaded = await loadRazorpayScript();
       if (!scriptLoaded) {
         setError('Could not load Razorpay. Please check your internet connection.');
@@ -152,7 +143,6 @@ const PaymentPage = () => {
         return;
       }
 
-      // 3. Ask backend to create a Razorpay order for this internal order
       const rzpOrderRes = await axios.post(
         'http://localhost:5000/api/payment/create-order',
         { orderId: internalOrderId },
@@ -161,7 +151,6 @@ const PaymentPage = () => {
 
       const { razorpayOrderId, amount, currency, keyId } = rzpOrderRes.data;
 
-      // 4. Open the Razorpay modal
       const options = {
         key: keyId,
         amount,
@@ -184,14 +173,11 @@ const PaymentPage = () => {
         handler: async (rzpResponse) => {
           try {
             const verification = await verifyPayment(rzpResponse, internalOrderId);
-
             if (verification.success) {
               await clearCart();
-              removeCoupon();       // ⭐ clear coupon after successful payment
+              removeCoupon();
               toast.success('Payment successful! 🎉');
-              navigate('/profile', {
-                state: { orderSuccess: true, orderId: internalOrderId },
-              });
+              navigate('/profile', { state: { orderSuccess: true, orderId: internalOrderId } });
             } else {
               setError('Payment verification failed. Please contact support.');
               setLoading(false);
@@ -238,33 +224,17 @@ const PaymentPage = () => {
   };
 
   if (cartItems.length === 0) {
-    navigate('/products', {replace: true});
+    navigate('/products', { replace: true });
     return null;
   }
 
   const paymentMethods = settings?.paymentMethods || ['COD', 'CARD', 'UPI', 'NETBANKING'];
 
   const paymentMethodConfig = {
-    COD: { 
-      label: 'Cash on Delivery', 
-      description: 'Pay when you receive your order',
-      icon: Truck 
-    },
-    CARD: { 
-      label: 'Credit/Debit Card', 
-      description: 'Pay securely with Razorpay',
-      icon: CreditCard 
-    },
-    UPI: { 
-      label: 'UPI', 
-      description: 'Pay via UPI with Razorpay',
-      icon: Wallet 
-    },
-    NETBANKING: { 
-      label: 'Net Banking', 
-      description: 'Pay via Net Banking with Razorpay',
-      icon: DollarSign 
-    },
+    COD: { label: 'Cash on Delivery', description: 'Pay when you receive your order', icon: Truck },
+    CARD: { label: 'Credit/Debit Card', description: 'Pay securely with Razorpay', icon: CreditCard },
+    UPI: { label: 'UPI', description: 'Pay via UPI with Razorpay', icon: Wallet },
+    NETBANKING: { label: 'Net Banking', description: 'Pay via Net Banking with Razorpay', icon: DollarSign },
   };
 
   return (
@@ -272,7 +242,6 @@ const PaymentPage = () => {
       <h1 className="text-2xl sm:text-3xl font-playfair font-bold text-gray-800 dark:text-white mb-6 sm:mb-8">Checkout</h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
-        {/* Payment Form */}
         <div className="lg:col-span-2 min-w-0">
           <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
             {error && (
@@ -281,16 +250,13 @@ const PaymentPage = () => {
               </div>
             )}
 
-            {/* Shipping Address */}
             <div className="bg-white dark:bg-dark-card rounded-lg shadow-lg p-4 sm:p-6">
               <h2 className="text-base sm:text-xl font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
                 <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-gold-600 flex-shrink-0" /> Shipping Address
               </h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Address *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Address *</label>
                   <textarea
                     name="address"
                     value={formData.address}
@@ -302,9 +268,7 @@ const PaymentPage = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Phone Number *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Phone Number *</label>
                   <div className="relative">
                     <Phone className="absolute left-3 top-3 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                     <input
@@ -319,9 +283,7 @@ const PaymentPage = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Order Notes (Optional)
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Order Notes (Optional)</label>
                   <textarea
                     name="notes"
                     value={formData.notes}
@@ -334,7 +296,6 @@ const PaymentPage = () => {
               </div>
             </div>
 
-            {/* Payment Method */}
             <div className="bg-white dark:bg-dark-card rounded-lg shadow-lg p-4 sm:p-6">
               <h2 className="text-base sm:text-xl font-semibold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
                 <CreditCard className="h-4 w-4 sm:h-5 sm:w-5 text-gold-600 flex-shrink-0" /> Payment Method
@@ -378,12 +339,10 @@ const PaymentPage = () => {
           </form>
         </div>
 
-        {/* Order Summary with Full Breakdown */}
         <div className="min-w-0">
           <div className="bg-white dark:bg-dark-card rounded-lg shadow-lg p-4 sm:p-6 lg:sticky lg:top-20">
             <h2 className="text-lg sm:text-xl font-playfair font-bold text-gray-800 dark:text-white mb-4 sm:mb-6">Order Summary</h2>
 
-            {/* ⭐ Applied Coupon Chip */}
             {appliedCoupon && (
               <div className="mb-5 flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg gap-2">
                 <div className="flex items-center gap-2 min-w-0">
@@ -395,55 +354,49 @@ const PaymentPage = () => {
                     <p className="text-xs text-green-700 dark:text-green-400">
                       {appliedCoupon.type === 'FREE_SHIPPING'
                         ? 'Free shipping applied'
-                        : `You save ₹${breakdown.discount.toLocaleString('en-IN')}`}
+                        : `You save ${fmtINR(breakdown.discount)}`}
                     </p>
                   </div>
                 </div>
               </div>
             )}
             
-            {/* Items List */}
             <div className="space-y-3 max-h-64 overflow-y-auto mb-6 pr-2">
-              {cartItems.map((item) => (
-                <div key={item.id || item.productId} className="flex gap-3 py-2 border-b border-gray-100 dark:border-dark-border">
-                  <img
-                    src={
-                      item.product?.images?.[0] ||
-                      item.product?.colorMedia?.[0]?.url ||
-                      '/api/placeholder/50/50'
-                    }
-                    alt={item.product?.name}
-                    className="w-11 h-11 sm:w-12 sm:h-12 object-cover rounded flex-shrink-0"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = '/api/placeholder/50/50';
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 dark:text-white line-clamp-1">
-                      {item.product?.name}
-                    </p>
-                    <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Qty: {item.quantity}</p>
+              {cartItems.map((item) => {
+                const unitPrice = getItemUnitPrice(item);   // ✅ FIX
+                return (
+                  <div key={item.id || `${item.productId}-${JSON.stringify(item.configuration || {})}`} className="flex gap-3 py-2 border-b border-gray-100 dark:border-dark-border">
+                    <img
+                      src={getProductImage(item.product)}      /* ✅ FIX */
+                      alt={item.product?.name || 'Product'}
+                      className="w-11 h-11 sm:w-12 sm:h-12 object-cover rounded flex-shrink-0"
+                      onError={(e) => {
+                        e.target.onerror = null;
+                        e.target.src = '/placeholder.png';   /* ✅ FIX */
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-white line-clamp-1">
+                        {item.product?.name}
+                      </p>
+                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">Qty: {item.quantity}</p>
+                    </div>
+                    <span className="font-semibold text-sm sm:text-base text-gold-600 whitespace-nowrap">
+                      {fmtINR(unitPrice * item.quantity)}          {/* ✅ FIX */}
+                    </span>
                   </div>
-                  <span className="font-semibold text-sm sm:text-base text-gold-600 whitespace-nowrap">
-                    ₹{(item.product?.price || 0) * item.quantity}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* Price Breakdown */}
             <div className="space-y-3 mb-6">
               <div className="flex justify-between items-center gap-2 text-sm sm:text-base">
-                <span className="text-gray-600 dark:text-gray-400">
-                  Subtotal ({getTotalItems()} items)
-                </span>
+                <span className="text-gray-600 dark:text-gray-400">Subtotal ({getTotalItems()} items)</span>
                 <span className="font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                  ₹{breakdown.subtotal.toFixed(2)}
+                  {fmtINR(breakdown.subtotal)}
                 </span>
               </div>
 
-              {/* ⭐ Discount Line */}
               {breakdown.discount > 0 && (
                 <div className="flex justify-between items-center text-green-600 gap-2 text-sm sm:text-base">
                   <span className="flex items-center gap-1">
@@ -454,17 +407,13 @@ const PaymentPage = () => {
                       </span>
                     )}
                   </span>
-                  <span className="font-semibold whitespace-nowrap">
-                    − ₹{breakdown.discount.toFixed(2)}
-                  </span>
+                  <span className="font-semibold whitespace-nowrap">− {fmtINR(breakdown.discount)}</span>
                 </div>
               )}
               
               <div className="flex justify-between items-center gap-2 text-sm sm:text-base">
                 <div className="flex items-center gap-1">
-                  <span className="text-gray-600 dark:text-gray-400">
-                    GST ({breakdown.taxRate}%)
-                  </span>
+                  <span className="text-gray-600 dark:text-gray-400">GST ({breakdown.taxRate}%)</span>
                   <button 
                     onClick={() => setShowDetails(!showDetails)}
                     className="text-gray-400 hover:text-gray-600"
@@ -474,7 +423,7 @@ const PaymentPage = () => {
                   </button>
                 </div>
                 <span className="font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                  ₹{breakdown.tax.toFixed(2)}
+                  {fmtINR(breakdown.tax)}
                 </span>
               </div>
               
@@ -484,7 +433,7 @@ const PaymentPage = () => {
                   <span className="font-semibold text-green-600 whitespace-nowrap">FREE</span>
                 ) : (
                   <span className="font-semibold text-gray-800 dark:text-white whitespace-nowrap">
-                    ₹{breakdown.shipping.toFixed(2)}
+                    {fmtINR(breakdown.shipping)}
                   </span>
                 )}
               </div>
@@ -492,16 +441,10 @@ const PaymentPage = () => {
               <div className="border-t border-gray-200 dark:border-dark-border pt-3">
                 <div className="flex justify-between text-base sm:text-lg gap-2">
                   <span className="font-bold text-gray-800 dark:text-white">Total</span>
-                  <span className="font-bold text-gold-600 whitespace-nowrap">₹{breakdown.total.toFixed(2)}</span>
+                  <span className="font-bold text-gold-600 whitespace-nowrap">{fmtINR(breakdown.total)}</span>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  Inclusive of all taxes
-                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Inclusive of all taxes</p>
               </div>
-
-              
-
-              
             </div>
 
             <button
@@ -513,7 +456,7 @@ const PaymentPage = () => {
                 ? 'Processing...' 
                 : paymentMethod === 'COD' 
                   ? 'Place Order' 
-                  : `Pay ₹${breakdown.total.toFixed(2)}`}
+                  : `Pay ${fmtINR(breakdown.total)}`}
             </button>
 
             <div className="grid grid-cols-2 gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-dark-border">
