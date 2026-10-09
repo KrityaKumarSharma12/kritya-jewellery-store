@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { PLACEHOLDER_LARGE } from '../config/constants';
 import DynamicPriceBreakdown from '../components/DynamicPriceBreakdown';
+import HaathPhoolConfigurator from '../components/HaathPhoolConfigurator';
 
 const ProductDetailPage = () => {
   const { id } = useParams();
@@ -131,12 +132,29 @@ const ProductDetailPage = () => {
         setDynamicConfig(res.data);
         isDynamicRef.current = !!res.data?.isDynamic;
 
-        if (res.data?.isDynamic && res.data.defaultConfiguration) {
+        if (res.data?.isDynamic) {
           setSizeConfig((prev) => {
-            const nextKey = JSON.stringify(res.data.defaultConfiguration);
-            const prevKey = JSON.stringify(prev);
-            if (prevKey === nextKey) return prev;
-            return res.data.defaultConfiguration;
+            // Only seed once — keep the user's choices if they've already made any
+            if (prev && Array.isArray(prev.rings) && prev.rings.length > 0) return prev;
+
+            const opts = res.data.sizingOptions || {};
+            const ringOptions = opts.ring || [];
+            const braceletOptions = opts.bracelet || [];
+
+            const defaultRingSize =
+              ringOptions.find((o) => o.isDefault)?.value || ringOptions[0]?.value || '';
+            const defaultBraceletSize =
+              braceletOptions.find((o) => o.isDefault)?.value || braceletOptions[0]?.value || '';
+
+            return {
+              version: 3,
+              hand: 'right',
+              rings: defaultRingSize
+                ? [{ finger: 'middle', size: defaultRingSize, karat: 22 }]
+                : [],
+              medallion: { enabled: false, styleKey: 'lotus' },
+              bracelet: { size: defaultBraceletSize },
+            };
           });
         }
       } catch (err) {
@@ -191,81 +209,98 @@ const ProductDetailPage = () => {
     }
   };
 
+  // Shared validation for both Add to Cart and Buy Now
+  const validateConfiguration = () => {
+    if (!dynamicConfig?.isDynamic) return true;
+
+    const isV3 = Array.isArray(sizeConfig?.rings);
+
+    if (isV3) {
+      if (!sizeConfig.rings || sizeConfig.rings.length === 0) {
+        toast.error('Please select at least one ring');
+        return false;
+      }
+      const missingSize = sizeConfig.rings.find((r) => !r.size);
+      if (missingSize) {
+        toast.error(`Please select a size for the ${missingSize.finger} ring`);
+        return false;
+      }
+      if (!sizeConfig.bracelet?.size) {
+        toast.error('Please select a bracelet size');
+        return false;
+      }
+      return true;
+    }
+
+    // Legacy v1 validation
+    const requiredKeys = (dynamicConfig.components || [])
+      .filter((c) => !c.isOptional)
+      .map((c) => c.componentKey);
+    const missing = requiredKeys.filter((k) => !sizeConfig[k]);
+    if (missing.length > 0) {
+      toast.error('Please select all sizes');
+      return false;
+    }
+    return true;
+  };
+
   const handleAddToCart = async () => {
-  if (!isAuthenticated) {
-    toast.error('Please login to add items to cart');
-    navigate('/login');
-    return;
-  }
-
-  if (dynamicConfig?.isDynamic) {
-    const requiredKeys = (dynamicConfig.components || [])
-      .filter((c) => !c.isOptional)
-      .map((c) => c.componentKey);
-    const missing = requiredKeys.filter((k) => !sizeConfig[k]);
-    if (missing.length > 0) {
-      toast.error('Please select all sizes');
+    if (!isAuthenticated) {
+      toast.error('Please login to add items to cart');
+      navigate('/login');
       return;
     }
-  }
 
-  setAddingToCart(true);
-  try {
-    const configuration = dynamicConfig?.isDynamic ? sizeConfig : null;
+    if (!validateConfiguration()) return;
 
-    // ✅ Pass the live-computed unit price so cart stores it
-    const unitPrice =
-      dynamicPrice?.total ??
-      dynamicPrice?.price ??
-      product?.price ??
-      null;
+    setAddingToCart(true);
+    try {
+      const configuration = dynamicConfig?.isDynamic ? sizeConfig : null;
 
-    await addToCart(product.id, quantity, configuration, [], unitPrice);
-    toast.success('Added to cart! 🎉');
-  } catch (error) {
-    console.error('Error adding to cart:', error);
-    toast.error('Failed to add to cart');
-  } finally {
-    setAddingToCart(false);
-  }
-};
+      // Pass the live-computed unit price so cart stores it
+      const unitPrice =
+        dynamicPrice?.total ??
+        dynamicPrice?.price ??
+        product?.price ??
+        null;
 
-const handleBuyNow = async () => {
-  if (!isAuthenticated) {
-    toast.error('Please login to continue');
-    navigate('/login');
-    return;
-  }
+      await addToCart(product.id, quantity, configuration, [], unitPrice);
+      toast.success('Added to cart! 🎉');
+    } catch (error) {
+      console.error('Error adding to cart:', error);
+      toast.error('Failed to add to cart');
+    } finally {
+      setAddingToCart(false);
+    }
+  };
 
-  if (dynamicConfig?.isDynamic) {
-    const requiredKeys = (dynamicConfig.components || [])
-      .filter((c) => !c.isOptional)
-      .map((c) => c.componentKey);
-    const missing = requiredKeys.filter((k) => !sizeConfig[k]);
-    if (missing.length > 0) {
-      toast.error('Please select all sizes');
+  const handleBuyNow = async () => {
+    if (!isAuthenticated) {
+      toast.error('Please login to continue');
+      navigate('/login');
       return;
     }
-  }
 
-  setAddingToCart(true);
-  try {
-    const configuration = dynamicConfig?.isDynamic ? sizeConfig : null;
+    if (!validateConfiguration()) return;
 
-    const unitPrice =
-      dynamicPrice?.total ??
-      dynamicPrice?.price ??
-      product?.price ??
-      null;
+    setAddingToCart(true);
+    try {
+      const configuration = dynamicConfig?.isDynamic ? sizeConfig : null;
 
-    await addToCart(product.id, quantity, configuration, [], unitPrice);
-    navigate('/cart');
-  } catch (error) {
-    toast.error('Failed to proceed');
-  } finally {
-    setAddingToCart(false);
-  }
-};
+      const unitPrice =
+        dynamicPrice?.total ??
+        dynamicPrice?.price ??
+        product?.price ??
+        null;
+
+      await addToCart(product.id, quantity, configuration, [], unitPrice);
+      navigate('/cart');
+    } catch (error) {
+      toast.error('Failed to proceed');
+    } finally {
+      setAddingToCart(false);
+    }
+  };
 
   const handleWishlist = async () => {
     if (!isAuthenticated) {
@@ -576,7 +611,7 @@ const handleBuyNow = async () => {
               </div>
               <p className="text-xs text-gray-500 mt-1">Inclusive of all taxes</p>
 
-              {/* ✅ NEW: Dynamic product price breakdown */}
+              {/* Dynamic product price breakdown */}
               {dynamicConfig?.isDynamic && dynamicPrice?.componentBreakdowns && (
                 <div className="mt-3">
                   <DynamicPriceBreakdown
@@ -813,57 +848,18 @@ const handleBuyNow = async () => {
 
             {dynamicConfig?.isDynamic ? (
               <div className="mb-4 sm:mb-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="font-semibold text-gray-800 dark:text-white text-xs sm:text-sm">
-                    3. CHOOSE YOUR SIZES
-                  </span>
-                  <Info className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
-                </div>
-
                 {configLoading ? (
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <Loader2 className="h-4 w-4 animate-spin text-gold-600" />
-                    Loading size options...
+                    Loading configuration options...
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    {(dynamicConfig.components || []).map((comp) => {
-                      const selectedValue = sizeConfig[comp.componentKey] || '';
-                      const options = comp.sizingOptions || [];
-                      return (
-                        <div key={comp.componentKey}>
-                          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">
-                            {comp.name}
-                            {comp.isOptional && (
-                              <span className="ml-2 text-gray-400 font-normal">(optional)</span>
-                            )}
-                          </label>
-                          <select
-                            value={selectedValue}
-                            onChange={(e) =>
-                              setSizeConfig((prev) => ({
-                                ...prev,
-                                [comp.componentKey]: e.target.value,
-                              }))
-                            }
-                            className="w-full px-3 sm:px-4 py-2.5 sm:py-3 border border-gray-300 dark:border-dark-border rounded-lg focus:outline-none focus:ring-2 focus:ring-gold-500 bg-white dark:bg-dark-card text-gray-800 dark:text-white text-sm sm:text-base"
-                          >
-                            {options.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <HaathPhoolConfigurator
+                    config={sizeConfig}
+                    onChange={setSizeConfig}
+                    dynamicConfig={dynamicConfig}
+                  />
                 )}
-
-                <p className="text-xs text-gray-500 mt-3">
-                  <Info className="h-3 w-3 inline mr-1" />
-                  Sizes affect the gold weight and final price. The price updates live as you choose.
-                </p>
               </div>
             ) : (
               <div className="mb-4 sm:mb-6">
