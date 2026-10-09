@@ -1,6 +1,8 @@
 const prisma = require('../lib/prisma');
 const dynamicPricing = require('./dynamicPricing.service');
 
+const VALID_FINGERS = ['thumb', 'index', 'middle', 'ring', 'pinky'];
+
 class CartService {
   // ============== FETCH CART WITH PRODUCT RELATIONS ==============
   async fetchCart(userId) {
@@ -18,13 +20,122 @@ class CartService {
     });
   }
 
-  // ============== ✅ NEW: ENRICH A CART ITEM WITH PRICING ==============
+  // ============== ✅ NEW: VALIDATE DYNAMIC CONFIGURATION ==============
   //
-  // For a regular product: returns product.price as currentPrice.
-  // For a dynamic product (has configuration): computes live price
-  // and reports lock status (isStale, needsReconfirm, deltaPct).
+  // Guards the /api/cart endpoint against malformed configs. Two shapes:
+  //   v1 (legacy)  → configuration.ring is a string  → no extra validation
+  //   v3 (multi)   → configuration.rings is an array → full validation
+  //
+  // Throws statusCode 400 with a clear message when invalid.
+  // Nothing is written to the DB if this throws.
+  _validateDynamicConfiguration(config, dynamicConfig, productName) {
+    if (!config || typeof config !== 'object') {
+      const err = new Error('Configuration required for this product');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Detect shape
+    const isV3 = Array.isArray(config.rings);
+    if (!isV3) {
+      // Legacy v1 shape — nothing to validate here.
+      // The engine will handle it as before.
+      return;
+    }
+
+    // -------- V3 validation --------
+    const maxRings = dynamicConfig?.dynamicProduct?.maxRings ?? 5;
+    const maxMedallions = dynamicConfig?.dynamicProduct?.maxMedallions ?? 1;
+    const components = dynamicConfig?.components || [];
+
+    // Rings array — at least one, at most maxRings
+    if (config.rings.length === 0) {
+      const err = new Error('Please select at least one ring');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (config.rings.length > maxRings) {
+      const err = new Error(
+        `Too many rings selected: ${config.rings.length} (max ${maxRings})`
+      );
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Each ring: finger + size required, finger must be valid, no duplicates
+    const seenFingers = new Set();
+    for (let i = 0; i < config.rings.length; i++) {
+      const ring = config.rings[i];
+      if (!ring || typeof ring !== 'object') {
+        const err = new Error(`Ring #${i + 1} is malformed`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (!ring.finger) {
+        const err = new Error(`Ring #${i + 1} is missing a finger`);
+        err.statusCode = 400;
+        throw err;
+      }
+      if (!VALID_FINGERS.includes(ring.finger)) {
+        const err = new Error(
+          `Invalid finger "${ring.finger}". Must be one of: ${VALID_FINGERS.join(', ')}`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+      if (!ring.size) {
+        const err = new Error(
+          `Please select a size for the ${ring.finger} ring`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+      if (seenFingers.has(ring.finger)) {
+        const err = new Error(
+          `Duplicate finger "${ring.finger}" — only one ring per finger is allowed`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+      seenFingers.add(ring.finger);
+    }
+
+    // Medallion
+    const medallion = config.medallion || {};
+    if (medallion.enabled) {
+      if (maxMedallions < 1) {
+        const err = new Error('Medallion is not available for this product');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (!medallion.styleKey) {
+        const err = new Error('Please select a medallion style');
+        err.statusCode = 400;
+        throw err;
+      }
+      const validStyleKeys = components
+        .filter((c) => c.componentKey === 'medallion')
+        .map((c) => c.styleKey);
+      if (!validStyleKeys.includes(medallion.styleKey)) {
+        const err = new Error(
+          `Unknown medallion style "${medallion.styleKey}". Available: ${validStyleKeys.join(', ') || 'none'}`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    // Bracelet — always required for v3 Haath Phool
+    const bracelet = config.bracelet || {};
+    if (!bracelet.size) {
+      const err = new Error('Please select a bracelet size');
+      err.statusCode = 400;
+      throw err;
+    }
+  }
+
+  // ============== ENRICH A CART ITEM WITH PRICING ==============
   async _enrichWithPricing(cartItem) {
-    // Not a dynamic product → nothing to compute
     if (!cartItem.configuration) {
       return {
         ...cartItem,
@@ -48,7 +159,6 @@ class CartService {
       });
 
       if (!result) {
-        // Config was corrupted or dynamic product removed
         return {
           ...cartItem,
           currentPrice: cartItem.product.price,
@@ -77,7 +187,6 @@ class CartService {
       };
     } catch (err) {
       console.error('Error enriching cart item with pricing:', err);
-      // Don't crash the whole cart because one item failed — return it with a flag
       return {
         ...cartItem,
         currentPrice: cartItem.product.price,
@@ -94,10 +203,6 @@ class CartService {
   }
 
   // ============== CALCULATE CART SUMMARY ==============
-  //
-  // 🔧 FIX: now uses the enriched `effectivePrice` (or `currentPrice`) per item,
-  //         instead of raw product.price * quantity. This correctly sums
-  //         dynamic product totals alongside regular products.
   _summarize(cartItems) {
     const total = cartItems.reduce((sum, item) => {
       const unitPrice =
@@ -123,9 +228,6 @@ class CartService {
   }
 
   // ============== ADD TO CART ==============
-  //
-  // ✅ NEW: Accepts `configuration` and `skippedComponents` for dynamic products.
-  //         Computes the price, creates a lock, saves both on the cart row.
   async addToCart(userId, { productId, quantity = 1, configuration = null, skippedComponents = [] }) {
     if (!productId) {
       const err = new Error('Product ID required');
@@ -148,7 +250,7 @@ class CartService {
     // Detect if this is a dynamic product
     const dynamicConfig = await dynamicPricing.getDynamicProductConfig(productId);
 
-    // 🔧 Non-dynamic product → original behavior (but deduped, so a second add merges)
+    // Non-dynamic product → original behavior
     if (!dynamicConfig) {
       const existing = await prisma.cart.findFirst({
         where: { userId, productId, configuration: null },
@@ -178,12 +280,16 @@ class CartService {
       return { item: cartItem, cart: enriched };
     }
 
-    // ✅ Dynamic product → compute price + create lock
+    // Dynamic product → config is required
     if (!configuration || Object.keys(configuration).length === 0) {
       const err = new Error('Configuration required for this product');
       err.statusCode = 400;
       throw err;
     }
+
+    // ✅ NEW: validate the config shape BEFORE computing price.
+    //         Throws 400 with a clear message on any malformed input.
+    this._validateDynamicConfiguration(configuration, dynamicConfig, product.name);
 
     const priceResult = await dynamicPricing.calculatePrice(
       productId,
@@ -199,19 +305,15 @@ class CartService {
 
     const lock = await dynamicPricing.createPriceLock(productId, priceResult.total);
 
-    // Dedupe on (productId + configuration + skippedComponents)
-    // Merge into one row if the exact same config is added twice.
+    // Dedupe on (productId + configuration)
     const configKey = JSON.stringify(configuration);
-    const skippedKey = JSON.stringify(skippedComponents.sort());
 
     const candidates = await prisma.cart.findMany({
       where: { userId, productId },
     });
     const existing = candidates.find((c) => {
       if (!c.configuration) return false;
-      const sameConfig = JSON.stringify(c.configuration) === configKey;
-      // skippedComponents isn't stored on cart yet, so we compare config only
-      return sameConfig;
+      return JSON.stringify(c.configuration) === configKey;
     });
 
     let cartItem;
@@ -222,7 +324,6 @@ class CartService {
         err.statusCode = 400;
         throw err;
       }
-      // Refresh the lock — customer is re-adding, so restart the timer
       cartItem = await prisma.cart.update({
         where: { id: existing.id },
         data: {
@@ -312,9 +413,6 @@ class CartService {
   }
 
   // ============== GET CART WITH TOTALS ==============
-  //
-  // 🔧 FIX: previously computed tax on top of subtotal (double-counted GST).
-  //         Now extracts the embedded tax (informational only).
   async getCartWithTotals(userId) {
     const cartItems = await this.fetchCart(userId);
     const enrichedItems = await Promise.all(
@@ -350,23 +448,19 @@ class CartService {
       };
     });
 
-    // 🔧 FIX: GST is already included in the price. Extract it, don't add it.
-    // embeddedTax = subtotal − subtotal / (1 + rate/100)
     const embeddedTax =
       subtotal > 0 ? subtotal - subtotal / (1 + taxRate / 100) : 0;
 
-    // Shipping is added on top (it's not a taxable item)
     let shipping = shippingCost;
     if (subtotal >= freeShippingAbove) shipping = 0;
 
-    // Customer pays: subtotal + shipping. GST is inside subtotal.
     const total = subtotal + shipping;
 
     return {
       items,
       summary: {
         subtotal,
-        embeddedTax, // informational — not added to the total
+        embeddedTax,
         taxRate,
         shipping,
         total,

@@ -5,6 +5,7 @@
 const prisma = require('../lib/prisma');
 const {
   computeDynamicProductPrice,
+  computeMultiPiecePrice,
   computeLockExpiry,
   isLockExpired,
   shouldReconfirm,
@@ -44,6 +45,34 @@ function decimalToNumber(value) {
 
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+// ============================================================
+// SIZE-OPTION LABEL HUMANIZER
+// ============================================================
+//
+// Turns raw size keys into human-readable labels for the UI:
+//   size_7       → "Size 7"
+//   finger_middle → "Middle finger"
+//   6.5_inch     → "6.5 inch"
+//
+function humanizeSizeOption(sizeOption) {
+  if (!sizeOption || typeof sizeOption !== 'string') return '';
+
+  if (sizeOption.startsWith('size_')) {
+    return `Size ${sizeOption.slice(5)}`;
+  }
+
+  if (sizeOption.startsWith('finger_')) {
+    const finger = sizeOption.slice(7);
+    return `${finger.charAt(0).toUpperCase()}${finger.slice(1)} finger`;
+  }
+
+  if (sizeOption.endsWith('_inch')) {
+    return sizeOption.replace('_inch', ' inch');
+  }
+
+  return sizeOption;
 }
 
 // ============================================================
@@ -106,6 +135,10 @@ function normalizeSizingRule(rule) {
   };
 }
 
+// ============================================================
+// GET DYNAMIC PRODUCT CONFIG (with sizingOptions)
+// ============================================================
+
 async function getDynamicProductConfig(productId) {
   const dynamicProduct = await prisma.dynamicProduct.findUnique({
     where: { productId },
@@ -119,6 +152,29 @@ async function getDynamicProductConfig(productId) {
     return null;
   }
 
+  // -------- Build sizingOptions grouped by componentKey --------
+  // Shape:
+  //   {
+  //     ring:     [{ value, label, isDefault, weightSurgeGrams }, ...],
+  //     bridge:   [...],
+  //     bracelet: [...],
+  //   }
+  const sizingOptions = {};
+  for (const rule of dynamicProduct.sizingRules) {
+    const key = rule.componentKey;
+    if (!sizingOptions[key]) sizingOptions[key] = [];
+    sizingOptions[key].push({
+      value: rule.sizeOption,
+      label: humanizeSizeOption(rule.sizeOption),
+      isDefault: rule.isDefault ?? false,
+      weightSurgeGrams: decimalToNumber(rule.weightSurgeGrams),
+    });
+  }
+  // Sort each list alphabetically so the UI is stable across requests
+  for (const key of Object.keys(sizingOptions)) {
+    sizingOptions[key].sort((a, b) => a.value.localeCompare(b.value));
+  }
+
   return {
     dynamicProduct: {
       id: dynamicProduct.id,
@@ -128,9 +184,15 @@ async function getDynamicProductConfig(productId) {
       priceLockDurationOverride: dynamicProduct.priceLockDurationOverride,
       priceLockDurationUnitOverride:
         dynamicProduct.priceLockDurationUnitOverride,
+      // caps + finger→length map for the multi-piece engine
+      maxRings: dynamicProduct.maxRings ?? 5,
+      maxChainsPerRing: dynamicProduct.maxChainsPerRing ?? 1,
+      maxMedallions: dynamicProduct.maxMedallions ?? 1,
+      chainLengthByFinger: dynamicProduct.chainLengthByFinger || {},
     },
     components: dynamicProduct.components.map(normalizeComponent),
     sizingRules: dynamicProduct.sizingRules.map(normalizeSizingRule),
+    sizingOptions,   // ✅ NEW
   };
 }
 
@@ -147,23 +209,43 @@ async function calculatePrice(productId, configuration = {}, opts = {}) {
     getStoreSettings(),
   ]);
 
-  const result = computeDynamicProductPrice(
-    config.components,
-    config.sizingRules,
-    configuration,
-    liveRates,
-    {
-      taxRate: settings.taxRate,
-      bundleDiscountPct: config.dynamicProduct.bundleDiscountPct,
-      skippedComponents: opts.skippedComponents || [],
-    }
-  );
+  // Route based on config shape:
+  //   v3 (multi-piece) → configuration.rings is an array
+  //   v1 (legacy flat) → configuration.ring is a string
+  const isMultiPiece = Array.isArray(configuration.rings);
+
+  const engineOptions = {
+    taxRate: settings.taxRate,
+    bundleDiscountPct: config.dynamicProduct.bundleDiscountPct,
+    // v3-only options (harmless to pass to the legacy engine, it ignores them)
+    maxRings: config.dynamicProduct.maxRings ?? 5,
+    maxMedallions: config.dynamicProduct.maxMedallions ?? 1,
+    // legacy option (harmless to pass to the v3 engine, it ignores it)
+    skippedComponents: opts.skippedComponents || [],
+  };
+
+  const result = isMultiPiece
+    ? computeMultiPiecePrice(
+        config.components,
+        config.sizingRules,
+        configuration,
+        liveRates,
+        engineOptions
+      )
+    : computeDynamicProductPrice(
+        config.components,
+        config.sizingRules,
+        configuration,
+        liveRates,
+        engineOptions
+      );
 
   return {
     ...result,
     productId,
     dynamicProductId: config.dynamicProduct.id,
     type: config.dynamicProduct.type,
+    configVersion: isMultiPiece ? 3 : 1,
   };
 }
 
@@ -255,6 +337,7 @@ async function calculatePriceWithLock(cartItem) {
 
 module.exports = {
   decimalToNumber,
+  humanizeSizeOption,
   getLiveMetalRates,
   getStoreSettings,
   getDynamicProductConfig,

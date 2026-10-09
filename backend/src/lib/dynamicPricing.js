@@ -190,7 +190,7 @@ function computeComponentPrice(component, selectedSize, sizingRules, liveRates, 
 }
 
 // ============================================================
-// PRODUCT-LEVEL PRICING
+// PRODUCT-LEVEL PRICING (legacy flat shape)
 // ============================================================
 
 /**
@@ -265,6 +265,191 @@ function computeDynamicProductPrice(
 }
 
 // ============================================================
+// MULTI-PIECE PRICING (Haath Phool with N rings + N bridges + medallion)
+// ============================================================
+//
+// The "config shape v3" for dynamic products where the customer can
+// pick ANY number of rings, and each ring owns one bridge (chain) that
+// drops down to a shared bracelet. Optionally a single medallion sits
+// on the middle finger's chain.
+//
+// Configuration shape:
+//   {
+//     version: 3,
+//     hand: 'right',
+//     rings: [
+//       { finger: 'index',  size: 'size_7', karat: 22 },
+//       { finger: 'middle', size: 'size_7', karat: 22 },
+//       ...
+//     ],
+//     medallion: { enabled: true, styleKey: 'kundan' },
+//     bracelet:  { size: '6.5_inch' }
+//   }
+//
+// Component lookup:
+//   - Ring piece       → (componentKey='ring',      styleKey='classic')
+//   - Bridge piece     → (componentKey='bridge',    styleKey='classic')
+//   - Medallion piece  → (componentKey='medallion', styleKey=<config.medallion.styleKey>)
+//   - Bracelet piece   → (componentKey='bracelet',  styleKey='classic')
+//
+// Sizing lookup:
+//   - Ring piece uses ring.size as the sizingRule.sizeOption
+//   - Bridge piece uses `finger_<finger>` as the sizingRule.sizeOption
+//   - Bracelet piece uses bracelet.size as the sizingRule.sizeOption
+//   - Medallion has no size
+//
+function computeMultiPiecePrice(
+  components,
+  sizingRules,
+  configuration = {},
+  liveRates = {},
+  options = {}
+) {
+  const {
+    taxRate = 3,
+    bundleDiscountPct = 0,
+    maxRings = 5,
+    maxMedallions = 1,
+  } = options;
+
+  // -------- Validation --------
+  const rings = Array.isArray(configuration.rings) ? configuration.rings : [];
+  if (rings.length === 0) {
+    throw new Error('At least one ring is required');
+  }
+  if (rings.length > maxRings) {
+    throw new Error(`Too many rings: ${rings.length} (max ${maxRings})`);
+  }
+
+  const medallionConfig = configuration.medallion || {};
+  const medallionEnabled = !!medallionConfig.enabled;
+  if (medallionEnabled && maxMedallions < 1) {
+    throw new Error('Medallion not allowed for this product');
+  }
+
+  // -------- Index components by (componentKey, styleKey) --------
+  const componentByKey = new Map();
+  for (const c of components) {
+    componentByKey.set(`${c.componentKey}::${c.styleKey || 'classic'}`, c);
+  }
+  const getComponent = (key, styleKey = 'classic') =>
+    componentByKey.get(`${key}::${styleKey}`);
+
+  // -------- Expand config → flat list of pieces --------
+  const pieces = [];
+
+  // 1. For each ring, emit a ring piece + a bridge piece
+  for (const ring of rings) {
+    if (!ring.finger || !ring.size) {
+      throw new Error(`Ring entry missing finger or size: ${JSON.stringify(ring)}`);
+    }
+
+    const ringComponent = getComponent('ring', 'classic');
+    if (!ringComponent) {
+      throw new Error(`Ring component not found on this product`);
+    }
+    pieces.push({
+      component: ringComponent,
+      sizeOption: ring.size,
+      kind: 'ring',
+      finger: ring.finger,
+    });
+
+    // Bridge for this finger. Bridge length comes from
+    // `finger_<finger>` sizing rule; bridge style is always 'classic' for now.
+    const bridgeComponent = getComponent('bridge', 'classic');
+    if (!bridgeComponent) {
+      throw new Error(`Bridge component not found on this product`);
+    }
+    pieces.push({
+      component: bridgeComponent,
+      sizeOption: `finger_${ring.finger}`,
+      kind: 'bridge',
+      finger: ring.finger,
+    });
+  }
+
+  // 2. Medallion (0 or 1)
+  if (medallionEnabled) {
+    const medallionStyleKey = medallionConfig.styleKey || 'lotus';
+    const medallionComponent = getComponent('medallion', medallionStyleKey);
+    if (!medallionComponent) {
+      throw new Error(
+        `Medallion variant "${medallionStyleKey}" not found on this product`
+      );
+    }
+    pieces.push({
+      component: medallionComponent,
+      sizeOption: null,
+      kind: 'medallion',
+      styleKey: medallionStyleKey,
+      finger: 'middle', // by convention
+    });
+  }
+
+  // 3. Bracelet (always exactly one)
+  const braceletConfig = configuration.bracelet || {};
+  const braceletComponent = getComponent('bracelet', 'classic');
+  if (!braceletComponent) {
+    throw new Error(`Bracelet component not found on this product`);
+  }
+  pieces.push({
+    component: braceletComponent,
+    sizeOption: braceletConfig.size || null,
+    kind: 'bracelet',
+  });
+
+  // -------- Price each piece using the existing per-component math --------
+  const componentBreakdowns = [];
+  let subtotal = 0;
+
+  for (const piece of pieces) {
+    const breakdown = computeComponentPrice(
+      piece.component,
+      piece.sizeOption,
+      sizingRules,
+      liveRates,
+      taxRate
+    );
+
+    // Tag the piece so downstream UI can group / label it
+    breakdown.pieceKind = piece.kind;
+    if (piece.finger) breakdown.finger = piece.finger;
+    if (piece.styleKey) breakdown.styleKey = piece.styleKey;
+
+    componentBreakdowns.push(breakdown);
+    subtotal += breakdown.componentTotal;
+  }
+
+  subtotal = money(subtotal);
+
+  // -------- Totals + embedded tax (same logic as the flat engine) --------
+  const discount = money(subtotal * (bundleDiscountPct / 100));
+  const totalAfterDiscount = money(subtotal - discount);
+  const embeddedTax = money(
+    totalAfterDiscount - totalAfterDiscount / (1 + taxRate / 100)
+  );
+
+  return {
+    subtotal,
+    bundleDiscountPct,
+    discount,
+    totalAfterDiscount,
+    total: totalAfterDiscount,
+    embeddedTax,
+    taxRate,
+    componentBreakdowns,
+    // Convenience groups for the UI (optional — flat list is still there)
+    groupedBreakdowns: {
+      rings:      componentBreakdowns.filter((b) => b.pieceKind === 'ring'),
+      bridges:    componentBreakdowns.filter((b) => b.pieceKind === 'bridge'),
+      medallion:  componentBreakdowns.find((b) => b.pieceKind === 'medallion') || null,
+      bracelet:   componentBreakdowns.find((b) => b.pieceKind === 'bracelet') || null,
+    },
+  };
+}
+
+// ============================================================
 // PRICE-LOCK HELPERS
 // ============================================================
 
@@ -321,6 +506,7 @@ function shouldReconfirm(oldPrice, newPrice, thresholdPct) {
 module.exports = {
   computeComponentPrice,
   computeDynamicProductPrice,
+  computeMultiPiecePrice,
   computeLockExpiry,
   isLockExpired,
   shouldReconfirm,

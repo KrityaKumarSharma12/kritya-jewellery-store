@@ -130,10 +130,33 @@ class ProductController {
     }
   }
 
-    // ============== DYNAMIC PRODUCT: CONFIG STRUCTURE ==============
+  // ============== DYNAMIC PRODUCT: CONFIG STRUCTURE ==============
   //
   // Returns the shape of a dynamic product so the storefront can
-  // render size selectors. No pricing info.
+  // render the configurator. No pricing info.
+  //
+  // Response shape:
+  //   {
+  //     isDynamic: true,
+  //     type: 'HAATH_PHOOL',
+  //     bundleDiscountPct: 0,
+  //     components: [...],              // flat list, one row per component/variant
+  //     sizingOptions: {                // grouped by componentKey
+  //       ring:     [{ value, label, isDefault, weightSurgeGrams }, ...],
+  //       bridge:   [...],
+  //       bracelet: [...],
+  //     },
+  //     dynamicProduct: {
+  //       maxRings, maxChainsPerRing, maxMedallions, chainLengthByFinger
+  //     },
+  //     defaultConfiguration: {         // v3 shape
+  //       version: 3,
+  //       hand: 'right',
+  //       rings: [{ finger, size, karat }],
+  //       medallion: { enabled, styleKey },
+  //       bracelet: { size },
+  //     }
+  //   }
   async getDynamicConfig(req, res) {
     try {
       const dynamicPricing = require('../services/dynamicPricing.service');
@@ -144,59 +167,51 @@ class ProductController {
         return res.json({ isDynamic: false });
       }
 
-      // Group sizing rules by component so we can attach options per component.
-      const rulesByComponent = {};
-      for (const rule of config.sizingRules) {
-        if (!rulesByComponent[rule.componentKey]) {
-          rulesByComponent[rule.componentKey] = [];
-        }
-        rulesByComponent[rule.componentKey].push({
-          value: rule.sizeOption,
-          isDefault: !!rule.isDefault,
-        });
-      }
+      const { dynamicProduct, components, sizingOptions } = config;
 
-      // Build the response shape the frontend needs.
-      const components = config.components.map((c) => ({
-        componentKey: c.componentKey,
-        name: c.name,
-        zone: c.zone,
-        isOptional: c.isOptional,
-        displayOrder: c.displayOrder,
-        sizingOptions: (rulesByComponent[c.componentKey] || [])
-          .sort((a, b) => {
-            // Keep "default" first, then sort by value string.
-            if (a.isDefault && !b.isDefault) return -1;
-            if (!a.isDefault && b.isDefault) return 1;
-            return String(a.value).localeCompare(String(b.value));
-          })
-          .map((opt) => ({
-            value: opt.value,
-            label: opt.value.replace(/_/g, ' '),
-            isDefault: opt.isDefault,
-          })),
-      }));
+      // -------- Build v3 default configuration --------
+      // Start with one ring on the middle finger (unlocks the
+      // medallion toggle in the UI) and the default bracelet size.
+      const ringOpts = sizingOptions.ring || [];
+      const braceletOpts = sizingOptions.bracelet || [];
 
-      // Build default configuration from each component's default size.
-      const defaultConfiguration = {};
-      for (const c of config.components) {
-        const rules = rulesByComponent[c.componentKey] || [];
-        const defaultRule = rules.find((r) => r.isDefault) || rules[0];
-        if (defaultRule) {
-          defaultConfiguration[c.componentKey] = defaultRule.value;
-        }
-      }
+      const defaultRingSize =
+        ringOpts.find((o) => o.isDefault)?.value || ringOpts[0]?.value || '';
+      const defaultBraceletSize =
+        braceletOpts.find((o) => o.isDefault)?.value ||
+        braceletOpts[0]?.value ||
+        '';
+
+      const defaultConfiguration = {
+        version: 3,
+        hand: 'right',
+        rings: defaultRingSize
+          ? [{ finger: 'middle', size: defaultRingSize, karat: 22 }]
+          : [],
+        medallion: { enabled: false, styleKey: 'lotus' },
+        bracelet: { size: defaultBraceletSize },
+      };
 
       return res.json({
         isDynamic: true,
-        type: config.dynamicProduct.type,
-        bundleDiscountPct: config.dynamicProduct.bundleDiscountPct,
+        type: dynamicProduct.type,
+        bundleDiscountPct: dynamicProduct.bundleDiscountPct,
         components,
+        sizingOptions,
+        dynamicProduct: {
+          maxRings: dynamicProduct.maxRings,
+          maxChainsPerRing: dynamicProduct.maxChainsPerRing,
+          maxMedallions: dynamicProduct.maxMedallions,
+          chainLengthByFinger: dynamicProduct.chainLengthByFinger,
+        },
         defaultConfiguration,
       });
     } catch (error) {
       console.error('Error fetching dynamic config:', error);
-      return res.status(500).json({ message: 'Server error', error: error.message });
+      return res.status(500).json({
+        message: 'Server error',
+        error: error.message,
+      });
     }
   }
 

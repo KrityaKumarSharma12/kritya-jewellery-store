@@ -629,6 +629,16 @@ model DynamicProduct {
   priceLockDurationOverride     Int?
   priceLockDurationUnitOverride String?   @db.VarChar(20)
 
+
+   // ✅ NEW: global caps for this dynamic product type
+  maxRings           Int?   // for HAATH_PHOOL: 5 (or 10 for both hands as a single product)
+  maxChainsPerRing   Int?   @default(1)   // usually 1
+  maxMedallions      Int?   @default(1)   // usually 1 or 0
+
+  // ✅ NEW: the finger → chain length mapping (for chains)
+  // { "thumb": 8, "index": 11, "middle": 13, "ring": 12, "pinky": 9 }  // in cm
+  chainLengthByFinger Json?  @default("{}")
+
   isActive          Boolean             @default(true)
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
@@ -645,10 +655,18 @@ model ProductComponent {
   dynamicProductId      String
   dynamicProduct        DynamicProduct  @relation(fields: [dynamicProductId], references: [id], onDelete: Cascade)
 
-  name                  String          @db.VarChar(100)  // "Ring", "Bridge", "Bracelet"
-  componentKey          String          @db.VarChar(50)   // "ring", "bridge", "bracelet"
-  zone                  String?         @db.VarChar(50)   // "ring" | "bridge" | "bracelet" | "phool"
-  isOptional            Boolean         @default(false)   // for Bridal Set checkboxes
+  name                  String          @db.VarChar(100)  // "Ring", "Chain", "Medallion", "Bracelet"
+  componentKey          String          @db.VarChar(50)   // "ring", "chain", "medallion", "bracelet"
+  zone                  String?         @db.VarChar(50)   // "finger" | "chain" | "center" | "wrist"
+
+  // ✅ NEW: is this a single instance or can it repeat?
+  isRepeatable          Boolean         @default(false)   // rings: true, chains: true, bracelet: false
+  maxQuantity           Int             @default(1)       // rings: 5, chains: 5, medallion: 1, bracelet: 1
+  isOptional            Boolean         @default(false)   // medallion: true, others: false
+
+  // ✅ NEW: chain-specific styling (used only when componentKey="chain")
+  styleKey              String          @default("classic") @db.VarChar(50)   // "classic" | "beaded" | "twisted"
+  priceBasis            String          @db.VarChar(20)   @default("PER_GRAM")  // PER_GRAM | PER_CM | FLAT
 
   // Metal
   metalType             String          @db.VarChar(20)   // "GOLD" | "SILVER" | "PLATINUM"
@@ -670,8 +688,11 @@ model ProductComponent {
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
 
-  @@unique([dynamicProductId, componentKey])
+  // ✅ CHANGED: uniqueness now includes styleKey so a product can have
+  //             multiple chain styles / medallion styles side by side.
+  @@unique([dynamicProductId, componentKey, styleKey])
   @@index([dynamicProductId])
+  @@index([dynamicProductId, componentKey])
 }
 
 model SizingWeightRule {
