@@ -66,7 +66,7 @@ function getMetalRate(liveRates, metalType, purity) {
  *
  * @returns {Object} Breakdown
  */
-function computeComponentPrice(component, selectedSize, sizingRules, liveRates, taxRate = 3) {
+function computeComponentPrice(component, selectedSize, sizingRules, liveRates, taxRate = 3, selectedPurity = null) {
   // 1. Weight surge lookup --------------------------------------
   let weightSurgeGrams = 0;
   if (selectedSize) {
@@ -95,8 +95,10 @@ function computeComponentPrice(component, selectedSize, sizingRules, liveRates, 
   const wastageWeight = weight(netWeight * (wastagePct / 100));
   const totalChargedWeight = weight(netWeight + wastageWeight);
 
-  // 3. Metal cost -----------------------------------------------
-  const liveRate = getMetalRate(liveRates, component.metalType, component.purity);
+   // 3. Metal cost -----------------------------------------------
+  // Prefer the customer-selected purity; fall back to the component's stored default.
+  const effectivePurity = selectedPurity || component.purity;
+  const liveRate = getMetalRate(liveRates, component.metalType, effectivePurity);
   const metalCost = money(totalChargedWeight * liveRate);
 
   // 4. Gemstone cost --------------------------------------------
@@ -173,7 +175,7 @@ function computeComponentPrice(component, selectedSize, sizingRules, liveRates, 
 
     // Rates
     metalType: component.metalType,
-    purity: component.purity,
+    purity: effectivePurity,
     liveRatePerGram: liveRate,
     wastagePercentage: wastagePct,
     makingChargeType: mcType,
@@ -348,11 +350,12 @@ function computeMultiPiecePrice(
     if (!ringComponent) {
       throw new Error(`Ring component not found on this product`);
     }
-    pieces.push({
+        pieces.push({
       component: ringComponent,
       sizeOption: ring.size,
       kind: 'ring',
       finger: ring.finger,
+      selectedPurity: ring.karat || null,
     });
 
     // Bridge for this finger. Bridge length comes from
@@ -361,11 +364,12 @@ function computeMultiPiecePrice(
     if (!bridgeComponent) {
       throw new Error(`Bridge component not found on this product`);
     }
-    pieces.push({
+        pieces.push({
       component: bridgeComponent,
       sizeOption: `finger_${ring.finger}`,
       kind: 'bridge',
       finger: ring.finger,
+      selectedPurity: ring.karat || null,
     });
   }
 
@@ -378,12 +382,13 @@ function computeMultiPiecePrice(
         `Medallion variant "${medallionStyleKey}" not found on this product`
       );
     }
-    pieces.push({
+        pieces.push({
       component: medallionComponent,
       sizeOption: null,
       kind: 'medallion',
       styleKey: medallionStyleKey,
-      finger: 'middle', // by convention
+      finger: 'middle',
+      selectedPurity: medallionConfig.karat || null,
     });
   }
 
@@ -393,23 +398,25 @@ function computeMultiPiecePrice(
   if (!braceletComponent) {
     throw new Error(`Bracelet component not found on this product`);
   }
-  pieces.push({
+    pieces.push({
     component: braceletComponent,
     sizeOption: braceletConfig.size || null,
     kind: 'bracelet',
+    selectedPurity: braceletConfig.karat || null,
   });
 
   // -------- Price each piece using the existing per-component math --------
   const componentBreakdowns = [];
   let subtotal = 0;
 
-  for (const piece of pieces) {
+    for (const piece of pieces) {
     const breakdown = computeComponentPrice(
       piece.component,
       piece.sizeOption,
       sizingRules,
       liveRates,
-      taxRate
+      taxRate,
+      piece.selectedPurity
     );
 
     // Tag the piece so downstream UI can group / label it

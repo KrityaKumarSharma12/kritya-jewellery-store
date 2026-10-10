@@ -146,15 +146,15 @@ const ProductDetailPage = () => {
             const defaultBraceletSize =
               braceletOptions.find((o) => o.isDefault)?.value || braceletOptions[0]?.value || '';
 
-            return {
-              version: 3,
-              hand: 'right',
-              rings: defaultRingSize
-                ? [{ finger: 'middle', size: defaultRingSize, karat: 22 }]
-                : [],
-              medallion: { enabled: false, styleKey: 'lotus' },
-              bracelet: { size: defaultBraceletSize },
-            };
+                    return {
+          version: 3,
+          hand: 'right',
+          rings: defaultRingSize
+            ? [{ finger: 'middle', size: defaultRingSize, karat: '22K' }]
+            : [],
+          medallion: { enabled: false, styleKey: 'lotus', karat: '22K' },
+          bracelet: { size: defaultBraceletSize, karat: '22K' },
+        };
           });
         }
       } catch (err) {

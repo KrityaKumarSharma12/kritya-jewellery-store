@@ -11,31 +11,17 @@ const FINGER_LABELS = {
   pinky: 'Pinky',
 };
 
-const KARATS = [18, 22];
+const DEFAULT_PURITIES = ['9K', '14K', '18K', '22K'];
 
-/**
- * Multi-piece configurator for Haath Phool.
- *
- * Emits a v3 configuration:
- *   {
- *     version: 3,
- *     hand: 'right',
- *     rings: [{ finger, size, karat }, ...],
- *     medallion: { enabled, styleKey },
- *     bracelet: { size }
- *   }
- *
- * All options come from the backend via the `dynamicConfig` prop.
- */
 const HaathPhoolConfigurator = ({ config, onChange, dynamicConfig }) => {
   const sizingOptions = dynamicConfig?.sizingOptions || {};
+  const puritiesByComponent = dynamicConfig?.puritiesByComponent || {};
   const components = dynamicConfig?.components || [];
   const meta = dynamicConfig?.dynamicProduct || {};
 
   const maxRings = meta.maxRings ?? 5;
   const maxMedallions = meta.maxMedallions ?? 1;
 
-  // Available medallion variants (multiple rows with same componentKey)
   const medallionVariants = components.filter(
     (c) => c.componentKey === 'medallion'
   );
@@ -43,20 +29,27 @@ const HaathPhoolConfigurator = ({ config, onChange, dynamicConfig }) => {
   const ringOptions = sizingOptions.ring || [];
   const braceletOptions = sizingOptions.bracelet || [];
 
+  const ringPurities = puritiesByComponent.ring?.length
+    ? puritiesByComponent.ring
+    : DEFAULT_PURITIES;
+  const medallionPurities = puritiesByComponent.medallion?.length
+    ? puritiesByComponent.medallion
+    : DEFAULT_PURITIES;
+  const braceletPurities = puritiesByComponent.bracelet?.length
+    ? puritiesByComponent.bracelet
+    : DEFAULT_PURITIES;
+
   const rings = config.rings || [];
-  const medallion = config.medallion || { enabled: false, styleKey: 'lotus' };
+  const medallion = config.medallion || { enabled: false, styleKey: 'lotus', karat: '22K' };
   const bracelet = config.bracelet || {
     size: braceletOptions[0]?.value || '',
+    karat: '22K',
   };
 
-  // ------- Mutators -------
   const toggleFinger = (finger) => {
     const existing = rings.find((r) => r.finger === finger);
     if (existing) {
-      onChange({
-        ...config,
-        rings: rings.filter((r) => r.finger !== finger),
-      });
+      onChange({ ...config, rings: rings.filter((r) => r.finger !== finger) });
     } else {
       if (rings.length >= maxRings) return;
       const defaultSize =
@@ -65,7 +58,7 @@ const HaathPhoolConfigurator = ({ config, onChange, dynamicConfig }) => {
         '';
       onChange({
         ...config,
-        rings: [...rings, { finger, size: defaultSize, karat: 22 }],
+        rings: [...rings, { finger, size: defaultSize, karat: '22K' }],
       });
     }
   };
@@ -85,7 +78,6 @@ const HaathPhoolConfigurator = ({ config, onChange, dynamicConfig }) => {
     onChange({ ...config, bracelet: { ...bracelet, ...patch } });
   };
 
-  // Is the "middle" finger ring enabled? Medallion requires it.
   const middleEnabled = rings.some((r) => r.finger === 'middle');
 
   return (
@@ -152,15 +144,15 @@ const HaathPhoolConfigurator = ({ config, onChange, dynamicConfig }) => {
                         ))}
                       </select>
                       <select
-                        value={ring.karat}
+                        value={ring.karat || '22K'}
                         onChange={(e) =>
-                          updateRing(finger, { karat: Number(e.target.value) })
+                          updateRing(finger, { karat: e.target.value })
                         }
                         className="px-2.5 py-1.5 border border-gray-300 dark:border-dark-border rounded-md text-xs bg-white dark:bg-dark-card text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
                       >
-                        {KARATS.map((k) => (
-                          <option key={k} value={k}>
-                            {k}K
+                        {ringPurities.map((p) => (
+                          <option key={p} value={p}>
+                            {p}
                           </option>
                         ))}
                       </select>
@@ -219,15 +211,26 @@ const HaathPhoolConfigurator = ({ config, onChange, dynamicConfig }) => {
           </label>
 
           {medallion.enabled && middleEnabled && medallionVariants.length > 0 && (
-            <div className="mt-2">
+            <div className="mt-2 flex gap-2 flex-wrap">
               <select
                 value={medallion.styleKey || 'lotus'}
                 onChange={(e) => setMedallion({ styleKey: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-dark-border rounded-lg text-sm bg-white dark:bg-dark-card text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
+                className="flex-1 min-w-[160px] px-3 py-2 border border-gray-300 dark:border-dark-border rounded-lg text-sm bg-white dark:bg-dark-card text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
               >
                 {medallionVariants.map((v) => (
                   <option key={v.styleKey} value={v.styleKey}>
                     {v.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={medallion.karat || '22K'}
+                onChange={(e) => setMedallion({ karat: e.target.value })}
+                className="px-3 py-2 border border-gray-300 dark:border-dark-border rounded-lg text-sm bg-white dark:bg-dark-card text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
+              >
+                {medallionPurities.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
                   </option>
                 ))}
               </select>
@@ -245,17 +248,30 @@ const HaathPhoolConfigurator = ({ config, onChange, dynamicConfig }) => {
           </span>
           <Info className="h-3.5 w-3.5 text-gray-400" />
         </div>
-        <select
-          value={bracelet.size || ''}
-          onChange={(e) => setBracelet({ size: e.target.value })}
-          className="w-full px-3 py-2.5 border border-gray-300 dark:border-dark-border rounded-lg text-sm bg-white dark:bg-dark-card text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
-        >
-          {braceletOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        <div className="flex gap-2 flex-wrap">
+          <select
+            value={bracelet.size || ''}
+            onChange={(e) => setBracelet({ size: e.target.value })}
+            className="flex-1 min-w-[160px] px-3 py-2.5 border border-gray-300 dark:border-dark-border rounded-lg text-sm bg-white dark:bg-dark-card text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
+          >
+            {braceletOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={bracelet.karat || '22K'}
+            onChange={(e) => setBracelet({ karat: e.target.value })}
+            className="px-3 py-2.5 border border-gray-300 dark:border-dark-border rounded-lg text-sm bg-white dark:bg-dark-card text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-gold-500"
+          >
+            {braceletPurities.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   );

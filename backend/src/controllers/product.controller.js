@@ -167,7 +167,7 @@ class ProductController {
         return res.json({ isDynamic: false });
       }
 
-      const { dynamicProduct, components, sizingOptions } = config;
+            const { dynamicProduct, components, sizingOptions, puritiesByComponent } = config;
 
       // -------- Build v3 default configuration --------
       // Start with one ring on the middle finger (unlocks the
@@ -182,22 +182,23 @@ class ProductController {
         braceletOpts[0]?.value ||
         '';
 
-      const defaultConfiguration = {
+            const defaultConfiguration = {
         version: 3,
         hand: 'right',
         rings: defaultRingSize
-          ? [{ finger: 'middle', size: defaultRingSize, karat: 22 }]
+          ? [{ finger: 'middle', size: defaultRingSize, karat: '22K' }]
           : [],
-        medallion: { enabled: false, styleKey: 'lotus' },
-        bracelet: { size: defaultBraceletSize },
+        medallion: { enabled: false, styleKey: 'lotus', karat: '22K' },
+        bracelet: { size: defaultBraceletSize, karat: '22K' },
       };
 
-      return res.json({
+            return res.json({
         isDynamic: true,
         type: dynamicProduct.type,
         bundleDiscountPct: dynamicProduct.bundleDiscountPct,
         components,
         sizingOptions,
+        puritiesByComponent,
         dynamicProduct: {
           maxRings: dynamicProduct.maxRings,
           maxChainsPerRing: dynamicProduct.maxChainsPerRing,

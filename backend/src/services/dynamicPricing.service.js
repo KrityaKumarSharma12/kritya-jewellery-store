@@ -122,6 +122,7 @@ function normalizeComponent(component) {
     makingChargeValue: decimalToNumber(component.makingChargeValue),
     stoneWeightGrams: decimalToNumber(component.stoneWeightGrams),
     // gemstones is Json — safe to pass through
+    // availablePurities is String[] — safe to pass through
   };
 }
 
@@ -136,7 +137,7 @@ function normalizeSizingRule(rule) {
 }
 
 // ============================================================
-// GET DYNAMIC PRODUCT CONFIG (with sizingOptions)
+// GET DYNAMIC PRODUCT CONFIG (with sizingOptions + puritiesByComponent)
 // ============================================================
 
 async function getDynamicProductConfig(productId) {
@@ -175,6 +176,28 @@ async function getDynamicProductConfig(productId) {
     sizingOptions[key].sort((a, b) => a.value.localeCompare(b.value));
   }
 
+  // -------- Build puritiesByComponent (union across same componentKey) --------
+  // Shape:
+  //   {
+  //     ring:     ['9K', '14K', '18K', '22K'],
+  //     bridge:   ['9K', '14K', '18K', '22K'],
+  //     medallion:['9K', '14K', '18K', '22K'],
+  //     bracelet: ['9K', '14K', '18K', '22K'],
+  //   }
+  const puritiesByComponent = {};
+  for (const c of dynamicProduct.components) {
+    const key = c.componentKey;
+    const list = Array.isArray(c.availablePurities) ? c.availablePurities : [];
+    if (!puritiesByComponent[key]) puritiesByComponent[key] = new Set();
+    list.forEach((p) => puritiesByComponent[key].add(p));
+  }
+  const PURITY_ORDER = ['9K', '14K', '18K', '22K', '24K'];
+  Object.keys(puritiesByComponent).forEach((key) => {
+    puritiesByComponent[key] = [...puritiesByComponent[key]].sort(
+      (a, b) => PURITY_ORDER.indexOf(a) - PURITY_ORDER.indexOf(b)
+    );
+  });
+
   return {
     dynamicProduct: {
       id: dynamicProduct.id,
@@ -192,7 +215,8 @@ async function getDynamicProductConfig(productId) {
     },
     components: dynamicProduct.components.map(normalizeComponent),
     sizingRules: dynamicProduct.sizingRules.map(normalizeSizingRule),
-    sizingOptions,   // ✅ NEW
+    sizingOptions,
+    puritiesByComponent,   // ✅ NEW
   };
 }
 

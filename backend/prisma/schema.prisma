@@ -670,7 +670,8 @@ model ProductComponent {
 
   // Metal
   metalType             String          @db.VarChar(20)   // "GOLD" | "SILVER" | "PLATINUM"
-  purity                String          @db.VarChar(20)   // "22K" | "18K" | "0"
+  purity                String          @db.VarChar(20)   // default purity — fallback if config doesn't specify
+  availablePurities     String[]        @default(["9K", "14K", "18K", "22K"])  // ✅ NEW
   baseWeightGrams       Decimal         @db.Decimal(10,3)
   wastagePercentage     Decimal         @db.Decimal(5,2)  @default(0)
 
