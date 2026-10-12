@@ -36,6 +36,7 @@ import AddProductPage from './admin/AddProductPage';
 
 // Placeholder pages (to be built out later)
 import DynamicProductsPage from './admin/DynamicProductsPage';
+import DynamicProductEditor from './admin/DynamicProductEditor';
 import SizeManagementPage from './admin/SizeManagementPage';
 import ProductStylesPage from './admin/ProductStylesPage';
 import CollectionsPage from './admin/CollectionsPage';
@@ -46,13 +47,6 @@ import StockAdjustmentsPage from './admin/StockAdjustmentsPage';
 
 // ============================================================
 // Menu structure — grouped
-//
-// Each entry is either:
-//   - type: 'single' → direct Link to `path`
-//   - type: 'group'  → collapsible parent, has `children[]`
-//
-// Every item can declare a `permission`. Items with no
-// permission are visible to all admins.
 // ============================================================
 const menuGroups = [
   {
@@ -165,7 +159,7 @@ const menuGroups = [
 ];
 
 // ============================================================
-// Permission gate — unchanged
+// Permission gate
 // ============================================================
 const PermissionGate = ({ permission, children }) => {
   const { hasPermission } = useAuth();
@@ -195,8 +189,6 @@ const AdminPanel = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
-  // Groups closed by default; auto-expand logic below will open the
-  // one containing the active route. Persisted in localStorage.
   const [openGroups, setOpenGroups] = useState(() => {
     try {
       const raw = localStorage.getItem('adminSidebarGroups');
@@ -212,14 +204,12 @@ const AdminPanel = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Persist open groups
   useEffect(() => {
     try {
       localStorage.setItem('adminSidebarGroups', JSON.stringify(openGroups));
     } catch (_) {}
   }, [openGroups]);
 
-  // Derive active item + group from URL
   const { activeItemId, activeGroupId } = (() => {
     const path = location.pathname;
     for (const g of menuGroups) {
@@ -237,7 +227,6 @@ const AdminPanel = () => {
     return { activeItemId: null, activeGroupId: null };
   })();
 
-  // Auto-expand the group containing the active item
   useEffect(() => {
     if (activeGroupId && !openGroups[activeGroupId]) {
       setOpenGroups((prev) => ({ ...prev, [activeGroupId]: true }));
@@ -266,7 +255,7 @@ const AdminPanel = () => {
         />
       )}
 
-      {/* Sidebar — flex column, nav scrolls, logout pinned */}
+      {/* Sidebar */}
       <div
         className={`
           ${sidebarOpen ? 'w-64 translate-x-0' : 'w-64 lg:w-20 -translate-x-full lg:translate-x-0'}
@@ -300,14 +289,13 @@ const AdminPanel = () => {
           <X className="h-5 w-5" />
         </button>
 
-        {/* Navigation — scrollable */}
+        {/* Navigation */}
         <nav
           className={`space-y-1 flex-1 overflow-y-auto transition-all duration-300 ${
             sidebarOpen ? 'p-4' : 'lg:p-2'
           }`}
         >
           {menuGroups.map((group) => {
-            // Single-link item (e.g., Dashboard)
             if (group.type === 'single') {
               const Icon = group.icon;
               const isActive = activeItemId === group.id;
@@ -333,7 +321,6 @@ const AdminPanel = () => {
               );
             }
 
-            // Group (collapsible)
             const Icon = group.icon;
             const children = filterChildren(group.children);
             if (children.length === 0) return null;
@@ -341,7 +328,6 @@ const AdminPanel = () => {
             const isOpen = !!openGroups[group.id];
             const hasActiveChild = activeGroupId === group.id;
 
-            // When collapsed, groups become just an icon
             if (!sidebarOpen) {
               return (
                 <div
@@ -360,7 +346,6 @@ const AdminPanel = () => {
 
             return (
               <div key={group.id} className="pt-1">
-                {/* Group header — highlighted when a child is active */}
                 <button
                   onClick={() => toggleGroup(group.id)}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-300 text-xs font-semibold uppercase tracking-wider ${
@@ -378,7 +363,6 @@ const AdminPanel = () => {
                   )}
                 </button>
 
-                {/* Group children */}
                 {isOpen && (
                   <div className="mt-1 space-y-0.5 pl-2">
                     {children.map((item) => {
@@ -409,7 +393,7 @@ const AdminPanel = () => {
           })}
         </nav>
 
-        {/* Logout — pinned via flex, not fixed */}
+        {/* Logout */}
         <div
           className={`flex-shrink-0 border-t border-gray-100 dark:border-dark-border bg-white dark:bg-dark-card transition-all duration-300 ${
             sidebarOpen ? 'p-4' : 'lg:p-2'
@@ -430,7 +414,6 @@ const AdminPanel = () => {
 
       {/* Main Content */}
       <div className={`${sidebarOpen ? 'ml-0 lg:ml-64' : 'ml-0 lg:ml-20'} flex-1 transition-all duration-300 min-w-0`}>
-        {/* Top Bar */}
         <div className="sticky top-0 z-20 bg-white dark:bg-dark-card shadow-sm dark:shadow-lg dark:shadow-black/20 px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex justify-between items-center gap-2 border-b border-transparent dark:border-dark-border">
           <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button
@@ -501,6 +484,7 @@ const AdminPanel = () => {
             <Route path="/products/edit/:id" element={<PermissionGate permission="edit_product"><AddProductPage /></PermissionGate>} />
 
             <Route path="/dynamic-products" element={<DynamicProductsPage />} />
+            <Route path="/dynamic-products/:id" element={<DynamicProductEditor />} />
 
             <Route path="/categories" element={<PermissionGate permission="manage_categories"><CategoryManagement /></PermissionGate>} />
             <Route path="/subcategories" element={<PermissionGate permission="manage_categories"><SubcategoryManagement /></PermissionGate>} />
