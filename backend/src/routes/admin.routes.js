@@ -3,6 +3,7 @@ const router = express.Router();
 const adminController = require('../controllers/admin.controller');
 const { authenticate, isAdmin } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
+const adminDynamicProductController = require('../controllers/adminDynamicProduct.controller');
 
 // All routes require admin authentication
 router.use(authenticate, isAdmin);
@@ -34,6 +35,60 @@ router.get('/products', requirePermission('view_product'), adminController.getAl
 router.post('/products', requirePermission('create_product'), adminController.createProduct);
 router.put('/products/:id', requirePermission('edit_product'), adminController.updateProduct);
 router.delete('/products/:id', requirePermission('delete_product'), adminController.deleteProduct);
+
+
+
+// ============== DYNAMIC PRODUCTS (Haath Phool, Couple Bands, Bridal Sets) ==============
+router.get('/dynamic-products',
+  requirePermission('view_product'),
+  adminDynamicProductController.list);
+
+router.get('/dynamic-products/:id',
+  requirePermission('view_product'),
+  adminDynamicProductController.getById);
+
+router.post('/dynamic-products',
+  requirePermission('create_product'),
+  adminDynamicProductController.create);
+
+router.put('/dynamic-products/:id',
+  requirePermission('edit_product'),
+  adminDynamicProductController.update);
+
+router.delete('/dynamic-products/:id',
+  requirePermission('delete_product'),
+  adminDynamicProductController.remove);
+
+// Components
+router.post('/dynamic-products/:id/components',
+  requirePermission('edit_product'),
+  adminDynamicProductController.addComponent);
+
+router.put('/dynamic-products/:id/components/:componentId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.updateComponent);
+
+router.delete('/dynamic-products/:id/components/:componentId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.removeComponent);
+
+// Sizing rules
+router.post('/dynamic-products/:id/sizing-rules',
+  requirePermission('edit_product'),
+  adminDynamicProductController.addSizingRule);
+
+router.put('/dynamic-products/:id/sizing-rules/:ruleId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.updateSizingRule);
+
+router.delete('/dynamic-products/:id/sizing-rules/:ruleId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.removeSizingRule);
+
+// Test price (uses the same engine as the customer path)
+router.post('/dynamic-products/:id/test-price',
+  requirePermission('view_product'),
+  adminDynamicProductController.testPrice);
 
 // ============== METAL RATES ==============
 router.get('/metal-rates', requirePermission('view_product'), adminController.getMetalRates);
