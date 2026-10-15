@@ -1,13 +1,36 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  Plus, Edit, Loader2, Sparkles, AlertCircle, Package,
+  Plus, Edit, Loader2, Sparkles, Package,
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { useAuth } from '../../context/AuthContext';
 
 const API = 'http://localhost:5000/api/admin/dynamic-products';
+
+// Resolve the best image URL from a product
+// Prefers colorMedia (modern), falls back to images[] (legacy)
+const getProductThumbnail = (product) => {
+  if (!product) return null;
+
+  // 1. Prefer colorMedia entries
+  if (Array.isArray(product.colorMedia) && product.colorMedia.length > 0) {
+    const imagesOnly = product.colorMedia.filter((m) => m.type !== 'video');
+    if (imagesOnly.length > 0) {
+      const primary = imagesOnly.find((m) => m.isPrimary);
+      const pick = primary || imagesOnly[0];
+      if (pick?.url) return pick.url;
+    }
+  }
+
+  // 2. Fall back to images[]
+  if (Array.isArray(product.images) && product.images.length > 0) {
+    return product.images[0];
+  }
+
+  return null;
+};
 
 const DynamicProductsPage = () => {
   const [items, setItems] = useState([]);
@@ -52,7 +75,7 @@ const DynamicProductsPage = () => {
           </p>
         </div>
         <button
-          onClick={() => navigate('/admin/products/add-product')}
+          onClick={() => navigate('/admin/dynamic-products/new')}
           className="w-full sm:w-auto bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg transition flex items-center justify-center gap-2 shadow-lg hover:shadow-xl text-xs sm:text-sm flex-shrink-0"
         >
           <Plus className="h-4 w-4 sm:h-5 sm:w-5" /> Create Dynamic Product
@@ -74,10 +97,10 @@ const DynamicProductsPage = () => {
             Create a product with jewelleryType = "Haath Phool" first, then link a dynamic configuration
           </p>
           <button
-            onClick={() => navigate('/admin/products/add-product')}
+            onClick={() => navigate('/admin/dynamic-products/new')}
             className="inline-flex items-center gap-2 bg-gold-600 hover:bg-gold-700 text-white px-4 sm:px-5 py-2 rounded-lg transition text-sm sm:text-base"
           >
-            <Plus className="h-4 w-4" /> Create Product
+            <Plus className="h-4 w-4" /> Create Dynamic Product
           </button>
         </div>
       ) : (
@@ -96,103 +119,119 @@ const DynamicProductsPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-dark-border">
-                {items.map((dp) => (
-                  <tr key={dp.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg transition">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-hidden flex-shrink-0">
-                          {dp.product?.images?.[0] ? (
-                            <img src={dp.product.images[0]} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <Package className="h-6 w-6 m-3 text-gray-400" />
-                          )}
+                {items.map((dp) => {
+                  const thumb = getProductThumbnail(dp.product);
+                  return (
+                    <tr key={dp.id} className="hover:bg-gray-50 dark:hover:bg-dark-bg transition">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-hidden flex-shrink-0">
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt={dp.product?.name || ''}
+                                className="w-full h-full object-cover"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                              />
+                            ) : (
+                              <Package className="h-6 w-6 m-3 text-gray-400" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-sm text-gray-800 dark:text-white truncate">
+                              {dp.product?.name || 'Untitled product'}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                              {dp.product?.category || '—'}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-sm text-gray-800 dark:text-white truncate">
-                            {dp.product?.name || 'Untitled product'}
-                          </p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                            {dp.product?.category || '—'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-1 text-xs rounded-full bg-gold-100 text-gold-800 dark:bg-gold-900/30 dark:text-gold-400 whitespace-nowrap">
-                        {dp.type.replace(/_/g, ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
-                      {dp.componentCount}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
-                      {dp.sizingRuleCount}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-1 text-xs rounded-full whitespace-nowrap ${
-                          dp.isActive
-                            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                            : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                        }`}
-                      >
-                        {dp.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        to={`/admin/dynamic-products/${dp.id}`}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition"
-                      >
-                        <Edit className="h-4 w-4" /> Edit
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-1 text-xs rounded-full bg-gold-100 text-gold-800 dark:bg-gold-900/30 dark:text-gold-400 whitespace-nowrap">
+                          {dp.type.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                        {dp.componentCount}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                        {dp.sizingRuleCount}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-1 text-xs rounded-full whitespace-nowrap ${
+                            dp.isActive
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                          }`}
+                        >
+                          {dp.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          to={`/admin/dynamic-products/${dp.id}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition"
+                        >
+                          <Edit className="h-4 w-4" /> Edit
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Mobile cards */}
           <div className="md:hidden space-y-3">
-            {items.map((dp) => (
-              <div
-                key={dp.id}
-                className="bg-white dark:bg-dark-card rounded-2xl shadow-lg p-4"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-hidden flex-shrink-0">
-                    {dp.product?.images?.[0] ? (
-                      <img src={dp.product.images[0]} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      <Package className="h-6 w-6 m-3 text-gray-400" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium text-sm text-gray-800 dark:text-white truncate">
-                      {dp.product?.name || 'Untitled'}
-                    </p>
-                    <span className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full bg-gold-100 text-gold-800 dark:bg-gold-900/30 dark:text-gold-400">
-                      {dp.type.replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <div className="text-gray-500 dark:text-gray-400">
-                    Components: <span className="font-medium text-gray-800 dark:text-white">{dp.componentCount}</span>
-                  </div>
-                  <div className="text-gray-500 dark:text-gray-400">
-                    Rules: <span className="font-medium text-gray-800 dark:text-white">{dp.sizingRuleCount}</span>
-                  </div>
-                </div>
-                <Link
-                  to={`/admin/dynamic-products/${dp.id}`}
-                  className="mt-3 w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-medium"
+            {items.map((dp) => {
+              const thumb = getProductThumbnail(dp.product);
+              return (
+                <div
+                  key={dp.id}
+                  className="bg-white dark:bg-dark-card rounded-2xl shadow-lg p-4"
                 >
-                  <Edit className="h-4 w-4" /> Edit Configuration
-                </Link>
-              </div>
-            ))}
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-hidden flex-shrink-0">
+                      {thumb ? (
+                        <img
+                          src={thumb}
+                          alt={dp.product?.name || ''}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      ) : (
+                        <Package className="h-6 w-6 m-3 text-gray-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-sm text-gray-800 dark:text-white truncate">
+                        {dp.product?.name || 'Untitled'}
+                      </p>
+                      <span className="inline-block mt-1 px-2 py-0.5 text-xs rounded-full bg-gold-100 text-gold-800 dark:bg-gold-900/30 dark:text-gold-400">
+                        {dp.type.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="text-gray-500 dark:text-gray-400">
+                      Components: <span className="font-medium text-gray-800 dark:text-white">{dp.componentCount}</span>
+                    </div>
+                    <div className="text-gray-500 dark:text-gray-400">
+                      Rules: <span className="font-medium text-gray-800 dark:text-white">{dp.sizingRuleCount}</span>
+                    </div>
+                  </div>
+                  <Link
+                    to={`/admin/dynamic-products/${dp.id}`}
+                    className="mt-3 w-full inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-lg text-sm font-medium"
+                  >
+                    <Edit className="h-4 w-4" /> Edit Configuration
+                  </Link>
+                </div>
+              );
+            })}
           </div>
         </>
       )}

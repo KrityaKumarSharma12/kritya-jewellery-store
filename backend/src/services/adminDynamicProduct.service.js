@@ -141,14 +141,18 @@ class AdminDynamicProductService {
       orderBy: { createdAt: 'desc' },
       include: {
         product: {
-          select: {
-            id: true,
-            name: true,
-            images: true,
-            category: true,
-            isActive: true,
-          },
-        },
+  select: {
+    id: true,
+    name: true,
+    images: true,
+    category: true,
+    isActive: true,
+    colorMedia: {
+      orderBy: { sortOrder: 'asc' },
+      select: { url: true, color: true, type: true, isPrimary: true },
+    },
+  },
+},
         _count: { select: { components: true, sizingRules: true } },
       },
     });

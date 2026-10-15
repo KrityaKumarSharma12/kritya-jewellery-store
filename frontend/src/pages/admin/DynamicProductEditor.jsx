@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Loader2, Save, AlertCircle,
+  ArrowLeft, Loader2, Save,
   Settings, Puzzle, Ruler, Calculator, Plus, Edit, Trash2,
 } from 'lucide-react';
 import axios from 'axios';
@@ -16,13 +16,11 @@ const DynamicProductEditor = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { token } = useAuth();
-  const headers = { Authorization: `Bearer ${token}` };
 
   const [dp, setDp] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
 
-  // Overview edit state
   const [overview, setOverview] = useState({
     maxRings: '',
     maxChainsPerRing: '',
@@ -33,7 +31,6 @@ const DynamicProductEditor = () => {
   });
   const [savingOverview, setSavingOverview] = useState(false);
 
-  // Modals
   const [componentModal, setComponentModal] = useState({ open: false, component: null });
   const [ruleModal, setRuleModal] = useState({ open: false, rule: null });
 
@@ -41,7 +38,9 @@ const DynamicProductEditor = () => {
   const fetchDp = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`${BASE}/${id}`, { headers });
+      const res = await axios.get(`${BASE}/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       setDp(res.data);
       setOverview({
         maxRings: res.data.maxRings ?? 5,
@@ -83,7 +82,9 @@ const DynamicProductEditor = () => {
           Object.entries(overview.chainLengthByFinger).map(([k, v]) => [k, Number(v) || 0])
         ),
       };
-      await axios.put(`${BASE}/${id}`, payload, { headers });
+      await axios.put(`${BASE}/${id}`, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       toast.success('Overview saved');
       await fetchDp();
     } catch (err) {
@@ -98,7 +99,9 @@ const DynamicProductEditor = () => {
   const handleDeleteComponent = async (component) => {
     if (!window.confirm(`Delete component "${component.name}"?\n\nThis cannot be undone.`)) return;
     try {
-      await axios.delete(`${BASE}/${id}/components/${component.id}`, { headers });
+      await axios.delete(`${BASE}/${id}/components/${component.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       toast.success('Component deleted');
       await fetchDp();
     } catch (err) {
@@ -111,7 +114,9 @@ const DynamicProductEditor = () => {
   const handleDeleteRule = async (rule) => {
     if (!window.confirm(`Delete sizing rule "${rule.sizeOption}"?`)) return;
     try {
-      await axios.delete(`${BASE}/${id}/sizing-rules/${rule.id}`, { headers });
+      await axios.delete(`${BASE}/${id}/sizing-rules/${rule.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       toast.success('Sizing rule deleted');
       await fetchDp();
     } catch (err) {
@@ -304,7 +309,6 @@ const DynamicProductEditor = () => {
             </div>
           ) : (
             <>
-              {/* Desktop table */}
               <div className="hidden md:block bg-white dark:bg-dark-card rounded-2xl shadow-lg overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-gray-50 dark:bg-dark-bg">
@@ -362,7 +366,6 @@ const DynamicProductEditor = () => {
                 </table>
               </div>
 
-              {/* Mobile cards */}
               <div className="md:hidden space-y-3">
                 {dp.components.map((c) => (
                   <div key={c.id} className="bg-white dark:bg-dark-card rounded-2xl shadow-lg p-4">

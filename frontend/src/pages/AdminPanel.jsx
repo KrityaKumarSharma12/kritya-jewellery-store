@@ -37,6 +37,7 @@ import AddProductPage from './admin/AddProductPage';
 // Placeholder pages (to be built out later)
 import DynamicProductsPage from './admin/DynamicProductsPage';
 import DynamicProductEditor from './admin/DynamicProductEditor';
+import AddDynamicProductPage from './admin/AddDynamicProductPage';
 import SizeManagementPage from './admin/SizeManagementPage';
 import ProductStylesPage from './admin/ProductStylesPage';
 import CollectionsPage from './admin/CollectionsPage';
@@ -484,6 +485,7 @@ const AdminPanel = () => {
             <Route path="/products/edit/:id" element={<PermissionGate permission="edit_product"><AddProductPage /></PermissionGate>} />
 
             <Route path="/dynamic-products" element={<DynamicProductsPage />} />
+            <Route path="/dynamic-products/new" element={<AddDynamicProductPage />} />
             <Route path="/dynamic-products/:id" element={<DynamicProductEditor />} />
 
             <Route path="/categories" element={<PermissionGate permission="manage_categories"><CategoryManagement /></PermissionGate>} />
