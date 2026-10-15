@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Loader2, Save,
   Settings, Puzzle, Ruler, Calculator, Plus, Edit, Trash2,
+  Image as ImageIcon, RefreshCw,
 } from 'lucide-react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -11,6 +12,7 @@ import ComponentFormModal from '../../components/admin/ComponentFormModal';
 import SizingRuleFormModal from '../../components/admin/SizingRuleFormModal';
 
 const BASE = 'http://localhost:5000/api/admin/dynamic-products';
+const UPLOAD_URL = 'http://localhost:5000/api/upload';
 
 const DynamicProductEditor = () => {
   const { id } = useParams();
@@ -140,6 +142,7 @@ const DynamicProductEditor = () => {
     { id: 'overview', label: 'Overview', icon: Settings },
     { id: 'components', label: `Components (${dp.components?.length || 0})`, icon: Puzzle },
     { id: 'sizing', label: `Sizing Rules (${dp.sizingRules?.length || 0})`, icon: Ruler },
+    { id: 'media', label: 'Media', icon: ImageIcon },
     { id: 'test', label: 'Test Price', icon: Calculator },
   ];
 
@@ -517,6 +520,11 @@ const DynamicProductEditor = () => {
         </div>
       )}
 
+      {/* MEDIA */}
+      {activeSection === 'media' && (
+        <MediaSection dynamicProductId={id} token={token} />
+      )}
+
       {/* TEST PRICE */}
       {activeSection === 'test' && (
         <TestPriceSection dp={dp} token={token} />
@@ -574,6 +582,211 @@ const NumField = ({ label, value, onChange, min, max, hint }) => (
     {hint && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{hint}</p>}
   </div>
 );
+
+// ============================================================
+// Media Section — one upload zone per color
+// ============================================================
+const MEDIA_COLORS = [
+  { value: 'Rose',   label: 'Rose Gold' },
+  { value: 'Yellow', label: 'Yellow Gold' },
+  { value: 'White',  label: 'White Gold' },
+];
+
+const MediaSection = ({ dynamicProductId, token }) => {
+  const [media, setMedia] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [uploadingColor, setUploadingColor] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+
+  const fetchMedia = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get(
+        `${BASE}/${dynamicProductId}/media`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setMedia(res.data?.media || []);
+    } catch (err) {
+      console.error('Fetch media error:', err);
+      toast.error('Failed to load media');
+      setMedia([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [dynamicProductId, token]);
+
+  useEffect(() => { fetchMedia(); }, [fetchMedia]);
+
+  const handleUpload = async (color, fileList) => {
+    if (!fileList || fileList.length === 0) return;
+    setUploadingColor(color);
+    try {
+      const files = Array.from(fileList);
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const uploadRes = await axios.post(UPLOAD_URL, fd, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        let url = uploadRes.data?.url || uploadRes.data?.secure_url || uploadRes.data?.fileUrl;
+        if (url && url.startsWith('/')) url = `http://localhost:5000${url}`;
+        if (!url) throw new Error('Upload succeeded but no URL returned');
+
+        const isFirstOverall = media.length === 0;
+
+        await axios.post(
+          `${BASE}/${dynamicProductId}/media`,
+          { url, color, type: 'image', isPrimary: isFirstOverall },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+      }
+      toast.success(
+        `${files.length} ${color} image${files.length > 1 ? 's' : ''} uploaded`
+      );
+      await fetchMedia();
+    } catch (err) {
+      console.error('Upload error:', err);
+      toast.error(err.response?.data?.message || 'Failed to upload');
+    } finally {
+      setUploadingColor(null);
+    }
+  };
+
+  const handleDelete = async (m) => {
+    if (!window.confirm(`Delete this ${m.color} image?`)) return;
+    try {
+      setDeleting(m.id);
+      await axios.delete(
+        `${BASE}/${dynamicProductId}/media/${m.id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      toast.success('Image removed');
+      await fetchMedia();
+    } catch (err) {
+      console.error('Delete error:', err);
+      toast.error(err.response?.data?.message || 'Failed to delete');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white dark:bg-dark-card rounded-2xl shadow-lg p-4 sm:p-6">
+        <div className="flex items-center justify-center h-32">
+          <Loader2 className="h-8 w-8 animate-spin text-gold-600" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white dark:bg-dark-card rounded-2xl shadow-lg p-4 sm:p-6 space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white">
+          Product Media
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          Upload images per metal color. They appear on the storefront product page,
+          grouped by color.
+        </p>
+      </div>
+
+      {MEDIA_COLORS.map((c) => {
+        const colorMedia = media.filter((m) => m.color === c.value);
+        const isUploading = uploadingColor === c.value;
+
+        return (
+          <div
+            key={c.value}
+            className="border border-gray-200 dark:border-dark-border rounded-xl p-4"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div
+                className={`w-4 h-4 rounded-full border border-gray-300 flex-shrink-0 ${
+                  c.value === 'Rose'
+                    ? 'bg-rose-300'
+                    : c.value === 'Yellow'
+                    ? 'bg-yellow-400'
+                    : 'bg-gray-200'
+                }`}
+              />
+              <h3 className="font-semibold text-sm text-gray-800 dark:text-white">
+                {c.label}
+              </h3>
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                ({colorMedia.length} image{colorMedia.length !== 1 ? 's' : ''})
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {colorMedia.map((m, i) => (
+                <div
+                  key={m.id}
+                  className="relative rounded-lg overflow-hidden border border-gray-200 dark:border-dark-border group bg-gray-50"
+                  style={{ aspectRatio: '1 / 1' }}
+                >
+                  <img
+                    src={m.url}
+                    alt={`${c.label} ${i + 1}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { e.target.style.background = '#fee2e2'; }}
+                  />
+                  {m.isPrimary && (
+                    <span className="absolute top-1 left-1 bg-gold-600 text-white text-[10px] px-1.5 py-0.5 rounded">
+                      Primary
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(m)}
+                    disabled={deleting === m.id}
+                    className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 text-white p-1 rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition disabled:opacity-50"
+                    aria-label="Remove media"
+                  >
+                    {deleting === m.id ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3 w-3" />
+                    )}
+                  </button>
+                </div>
+              ))}
+
+              {isUploading ? (
+                <div className="aspect-square flex items-center justify-center border-2 border-dashed border-gold-400 rounded-lg bg-gold-50 dark:bg-gold-900/20">
+                  <RefreshCw className="h-5 w-5 text-gold-600 animate-spin" />
+                </div>
+              ) : (
+                <label className="aspect-square flex flex-col items-center justify-center border-2 border-dashed border-gray-300 dark:border-dark-border rounded-lg cursor-pointer hover:border-gold-500 hover:bg-gold-50 dark:hover:bg-gold-900/10 transition">
+                  <ImageIcon className="h-5 w-5 text-gray-400 mb-1" />
+                  <span className="text-xs text-gray-500">Add Image</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => handleUpload(c.value, e.target.files)}
+                  />
+                </label>
+              )}
+            </div>
+
+            {colorMedia.length === 0 && !isUploading && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                No {c.label.toLowerCase()} images yet.
+              </p>
+            )}
+          </div>
+        );
+      })}
+
+      <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2 border-t border-gray-100 dark:border-dark-border">
+        Tip: the first image uploaded becomes the primary thumbnail for the product.
+      </p>
+    </div>
+  );
+};
 
 // Test price preview
 const TestPriceSection = ({ dp, token }) => {

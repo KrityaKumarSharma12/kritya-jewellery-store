@@ -1,13 +1,6 @@
 // ============================================================
 // ADMIN: DYNAMIC PRODUCT SERVICE
 // ============================================================
-//
-// CRUD + validation for DynamicProduct, ProductComponent, and
-// SizingWeightRule rows. Used by the admin panel to configure
-// Haath Phool / Couple Bands / Bridal Sets.
-//
-// All errors thrown here carry `statusCode` so the controller can
-// respond with the right HTTP code.
 
 const prisma = require('../lib/prisma');
 
@@ -141,18 +134,18 @@ class AdminDynamicProductService {
       orderBy: { createdAt: 'desc' },
       include: {
         product: {
-  select: {
-    id: true,
-    name: true,
-    images: true,
-    category: true,
-    isActive: true,
-    colorMedia: {
-      orderBy: { sortOrder: 'asc' },
-      select: { url: true, color: true, type: true, isPrimary: true },
-    },
-  },
-},
+          select: {
+            id: true,
+            name: true,
+            images: true,
+            category: true,
+            isActive: true,
+            colorMedia: {
+              orderBy: { sortOrder: 'asc' },
+              select: { url: true, color: true, type: true, isPrimary: true },
+            },
+          },
+        },
         _count: { select: { components: true, sizingRules: true } },
       },
     });
@@ -449,6 +442,90 @@ class AdminDynamicProductService {
     const result = await dynamicPricing.calculatePrice(dp.productId, configuration, {});
     if (!result) fail('Could not compute price', 500);
     return result;
+  }
+
+  // ============================================================
+  // PRODUCT MEDIA (colorMedia for the underlying Product)
+  // ============================================================
+
+  async listMedia(dynamicProductId) {
+    const dp = await prisma.dynamicProduct.findUnique({
+      where: { id: dynamicProductId },
+      select: { productId: true },
+    });
+    if (!dp) fail('Dynamic product not found', 404);
+
+    const media = await prisma.colorMedia.findMany({
+      where: { productId: dp.productId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    return { productId: dp.productId, media };
+  }
+
+  async addMedia(dynamicProductId, body) {
+    const dp = await prisma.dynamicProduct.findUnique({
+      where: { id: dynamicProductId },
+      select: { productId: true },
+    });
+    if (!dp) fail('Dynamic product not found', 404);
+
+    const url = body.url ? String(body.url).trim() : '';
+    if (!url) fail('url is required');
+
+    const color = body.color ? String(body.color).trim() : 'Yellow';
+    const type = body.type ? String(body.type).trim() : 'image';
+    if (!['image', 'video'].includes(type)) {
+      fail(`Invalid type "${type}". Must be "image" or "video"`);
+    }
+
+    const isPrimary = !!body.isPrimary;
+    if (isPrimary) {
+      await prisma.colorMedia.updateMany({
+        where: { productId: dp.productId, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+
+    let sortOrder = body.sortOrder;
+    if (sortOrder === undefined || sortOrder === null) {
+      const last = await prisma.colorMedia.findFirst({
+        where: { productId: dp.productId },
+        orderBy: { sortOrder: 'desc' },
+        select: { sortOrder: true },
+      });
+      sortOrder = (last?.sortOrder ?? -1) + 1;
+    } else {
+      sortOrder = toRequiredInt(sortOrder, 'sortOrder');
+    }
+
+    return prisma.colorMedia.create({
+      data: {
+        productId: dp.productId,
+        url,
+        color,
+        type,
+        isPrimary,
+        sortOrder,
+      },
+    });
+  }
+
+  async removeMedia(dynamicProductId, mediaId) {
+    const dp = await prisma.dynamicProduct.findUnique({
+      where: { id: dynamicProductId },
+      select: { productId: true },
+    });
+    if (!dp) fail('Dynamic product not found', 404);
+
+    const media = await prisma.colorMedia.findUnique({ where: { id: mediaId } });
+    if (!media) fail('Media not found', 404);
+    if (media.productId !== dp.productId) {
+      fail('Media does not belong to this product', 403);
+    }
+
+    await prisma.colorMedia.delete({ where: { id: mediaId } });
+    return { id: mediaId };
   }
 }
 

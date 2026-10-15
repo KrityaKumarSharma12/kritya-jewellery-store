@@ -5,16 +5,11 @@
 const service = require('../services/adminDynamicProduct.service');
 
 // Recursively convert Prisma serialized Decimals ({s, e, d}) to numbers.
-// Handles nested arrays and objects. Applied at the HTTP boundary so
-// the frontend always receives plain numbers.
 const normalizeDecimals = (value) => {
   if (value === null || value === undefined) return value;
-
-  // Dates pass through unchanged (Express will serialize to ISO strings)
   if (value instanceof Date) return value;
 
   if (typeof value === 'object') {
-    // Serialized Decimal: { s: 1, e: 0, d: [4, 5000000] }  →  4.5
     if ('s' in value && 'e' in value && Array.isArray(value.d)) {
       const sign = value.s >= 0 ? 1 : -1;
       const digits = value.d.join('');
@@ -22,9 +17,7 @@ const normalizeDecimals = (value) => {
       return sign * Number(digits) * Math.pow(10, exp - digits.length + 1);
     }
 
-    if (Array.isArray(value)) {
-      return value.map(normalizeDecimals);
-    }
+    if (Array.isArray(value)) return value.map(normalizeDecimals);
 
     const out = {};
     for (const [k, v] of Object.entries(value)) {
@@ -100,6 +93,21 @@ class AdminDynamicProductController {
   testPrice = handle(async (req) => {
     const result = await service.testPrice(req.params.id, req.body.configuration || {});
     return result;
+  });
+
+  // ---------------- Product Media ----------------
+  listMedia = handle(async (req) => {
+    return service.listMedia(req.params.id);
+  });
+
+  addMedia = handle(async (req) => {
+    const result = await service.addMedia(req.params.id, req.body);
+    return { message: 'Media added', media: result };
+  });
+
+  removeMedia = handle(async (req) => {
+    const result = await service.removeMedia(req.params.id, req.params.mediaId);
+    return { message: 'Media deleted', ...result };
   });
 }
 

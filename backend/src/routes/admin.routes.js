@@ -90,6 +90,71 @@ router.post('/dynamic-products/:id/test-price',
   requirePermission('view_product'),
   adminDynamicProductController.testPrice);
 
+  // ============== DYNAMIC PRODUCTS (Haath Phool, Couple Bands, Bridal Sets) ==============
+router.get('/dynamic-products',
+  requirePermission('view_product'),
+  adminDynamicProductController.list);
+
+router.get('/dynamic-products/:id',
+  requirePermission('view_product'),
+  adminDynamicProductController.getById);
+
+router.post('/dynamic-products',
+  requirePermission('create_product'),
+  adminDynamicProductController.create);
+
+router.put('/dynamic-products/:id',
+  requirePermission('edit_product'),
+  adminDynamicProductController.update);
+
+router.delete('/dynamic-products/:id',
+  requirePermission('delete_product'),
+  adminDynamicProductController.remove);
+
+// Components
+router.post('/dynamic-products/:id/components',
+  requirePermission('edit_product'),
+  adminDynamicProductController.addComponent);
+
+router.put('/dynamic-products/:id/components/:componentId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.updateComponent);
+
+router.delete('/dynamic-products/:id/components/:componentId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.removeComponent);
+
+// Sizing rules
+router.post('/dynamic-products/:id/sizing-rules',
+  requirePermission('edit_product'),
+  adminDynamicProductController.addSizingRule);
+
+router.put('/dynamic-products/:id/sizing-rules/:ruleId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.updateSizingRule);
+
+router.delete('/dynamic-products/:id/sizing-rules/:ruleId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.removeSizingRule);
+
+// Test price
+router.post('/dynamic-products/:id/test-price',
+  requirePermission('view_product'),
+  adminDynamicProductController.testPrice);
+
+// Product Media (colorMedia for the underlying Product)
+router.get('/dynamic-products/:id/media',
+  requirePermission('view_product'),
+  adminDynamicProductController.listMedia);
+
+router.post('/dynamic-products/:id/media',
+  requirePermission('edit_product'),
+  adminDynamicProductController.addMedia);
+
+router.delete('/dynamic-products/:id/media/:mediaId',
+  requirePermission('edit_product'),
+  adminDynamicProductController.removeMedia);
+
 // ============== METAL RATES ==============
 router.get('/metal-rates', requirePermission('view_product'), adminController.getMetalRates);
 router.put('/metal-rates/:id', requirePermission('manage_metal_rates'), adminController.updateMetalRate);
