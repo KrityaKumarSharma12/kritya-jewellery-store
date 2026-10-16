@@ -21,7 +21,7 @@ const ProductManagement = () => {
   const [categories, setCategories] = useState([]);
   const [error, setError] = useState(null);
 
-  // ✅ NEW: Show inactive toggle, persisted
+  // ✅ Show inactive toggle, persisted
   const [showInactive, setShowInactive] = useState(() => {
     try {
       return localStorage.getItem('adminShowInactiveProducts') === 'true';
@@ -44,7 +44,7 @@ const ProductManagement = () => {
       setLoading(true);
       setError(null);
 
-      // ✅ Include inactive when toggle is on
+      // Include inactive when toggle is on
       const url = showInactive
         ? 'http://localhost:5000/api/admin/products?includeInactive=true'
         : 'http://localhost:5000/api/admin/products';
@@ -99,7 +99,7 @@ const ProductManagement = () => {
     fetchCategories();
   }, [fetchProducts, fetchCategories]);
 
-    const handleDelete = async (product) => {
+  const handleDelete = async (product) => {
     const id = product.id;
     const isActive = product.isActive !== false;
 
@@ -222,7 +222,7 @@ const ProductManagement = () => {
             }}
           />
           <div className="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[calc(100%-1rem)]">
-            {/* ✅ Dynamic badge */}
+            {/* Dynamic badge */}
             {isDynamic && (
               <span className="bg-purple-600 text-white px-2 py-1 text-[10px] sm:text-xs rounded flex items-center gap-1 whitespace-nowrap">
                 <Sparkles className="h-3 w-3 flex-shrink-0" /> Dynamic
@@ -288,7 +288,16 @@ const ProductManagement = () => {
           </div>
           <div className="flex items-end justify-between mt-3 gap-2">
             <div className="min-w-0">
-              <p className="text-lg sm:text-xl font-bold text-gold-600 whitespace-nowrap">₹{price.toLocaleString()}</p>
+              {/* ✅ Dynamic products show "Configurable" — their real price comes from the component engine */}
+              {isDynamic ? (
+                <p className="text-sm sm:text-base font-semibold text-purple-600 dark:text-purple-400 whitespace-nowrap">
+                  Configurable
+                </p>
+              ) : (
+                <p className="text-lg sm:text-xl font-bold text-gold-600 whitespace-nowrap">
+                  ₹{price.toLocaleString()}
+                </p>
+              )}
               <p className="text-xs sm:text-sm text-gray-500">Stock: {stock}</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
@@ -390,7 +399,7 @@ const ProductManagement = () => {
           ))}
         </select>
 
-        {/* ✅ NEW: Show inactive toggle */}
+        {/* Show inactive toggle */}
         <button
           onClick={() => setShowInactive((v) => !v)}
           className={`px-3 sm:px-4 py-2 border rounded-lg transition flex items-center gap-2 text-xs sm:text-sm self-start sm:self-auto whitespace-nowrap ${

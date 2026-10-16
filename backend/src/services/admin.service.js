@@ -230,12 +230,12 @@ class AdminService {
   }
 
   // ============== PRODUCT MANAGEMENT ==============
-  async getAllProducts({ page = 1, limit = 20, search, category }) {
+  async getAllProducts({ page = 1, limit = 20, search, category, includeInactive }) {
     const take = Math.min(parseInt(limit, 10) || 20, 100);
     const currentPage = Math.max(parseInt(page, 10) || 1, 1);
     const skip = (currentPage - 1) * take;
 
-    const where = {};
+    const where = includeInactive === 'true' ? {} : { isActive: true };
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -254,13 +254,17 @@ class AdminService {
           colorMedia: { orderBy: { sortOrder: 'asc' } },
           variants: true,
           collection: true,
+          dynamicProduct: { select: { id: true, type: true } },
         },
       }),
       prisma.product.count({ where }),
     ]);
 
     return {
-      products,
+      products: products.map((p) => ({
+        ...p,
+        hasDynamicProduct: Boolean(p.dynamicProduct),
+      })),
       pagination: {
         page: currentPage,
         limit: take,
