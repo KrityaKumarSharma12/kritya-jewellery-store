@@ -581,6 +581,7 @@ class ProductService {
           colorMedia: { orderBy: { sortOrder: 'asc' } },
           variants: true,
           collection: true,
+          dynamicProduct: { select: { id: true, type: true } },   // ✅ NEW
         },
       });
       total = await prisma.product.count({ where });
@@ -596,6 +597,7 @@ class ProductService {
       const originalPrice = product.price * 1.2;
       return {
         ...product,
+        hasDynamicProduct: Boolean(product.dynamicProduct),   // ✅ NEW
         originalPrice: Math.round(originalPrice),
         discount: Math.round(((originalPrice - product.price) / originalPrice) * 100),
         dynamicPricing: {
@@ -620,7 +622,6 @@ class ProductService {
   }
 
   // ============== GET PRODUCT BY ID ==============
-    // ============== GET PRODUCT BY ID ==============
   async getProductById(id) {
     const product = await prisma.product.findUnique({
       where: { id },
@@ -633,6 +634,9 @@ class ProductService {
           },
         },
         collection: true,
+        dynamicProduct: {                       // ✅ NEW
+          select: { id: true, type: true },     // ✅ NEW
+        },                                      // ✅ NEW
       },
     });
 
@@ -740,6 +744,7 @@ class ProductService {
 
     return {
       ...product,
+      hasDynamicProduct: Boolean(product.dynamicProduct),   // ✅ NEW
       originalPrice: Math.round(originalPrice),
       discount: Math.round(((originalPrice - product.price) / originalPrice) * 100),
       breakdown,
