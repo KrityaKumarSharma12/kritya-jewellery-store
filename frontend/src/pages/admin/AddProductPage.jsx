@@ -11,6 +11,7 @@ import {
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import toast from 'react-hot-toast';
+import DynamicProductConfigPanel from '../../components/admin/DynamicProductConfigPanel';
 
 // ============================================================
 // TOP-LEVEL COMPONENTS
@@ -77,6 +78,9 @@ const AddProductPage = () => {
   const [metalOptions, setMetalOptions] = useState([]);
   const [gemstoneOptions, setGemstoneOptions] = useState([]);
 
+  // ✅ NEW: remember the DynamicProduct ID when editing a dynamic product
+  const [dynamicProductId, setDynamicProductId] = useState(null);
+
   const [formData, setFormData] = useState({
     name: '',
     jewelleryType: '',
@@ -133,7 +137,7 @@ const AddProductPage = () => {
     };
   }
 
-  // ✅ NEW: dynamic-type detection
+  // ✅ Dynamic-type detection
   const selectedType = masterData.jewelleryTypes.find(
     (t) => t.name === formData.jewelleryType
   );
@@ -211,6 +215,13 @@ const AddProductPage = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const p = res.data;
+
+      // ✅ Detect & remember the dynamic product ID (if any)
+      if (p.dynamicProduct?.id) {
+        setDynamicProductId(p.dynamicProduct.id);
+      } else {
+        setDynamicProductId(null);
+      }
 
       setFormData({
         name: p.name || '',
@@ -523,7 +534,7 @@ const AddProductPage = () => {
       }
 
       // ============================================================
-      // DYNAMIC PATH — Haath Phool / Couple Bands / Bridal Set
+      // DYNAMIC PATH — NEW product (Haath Phool / Couple Bands / Bridal Set)
       // ============================================================
       if (isDynamicType && !isEditMode) {
         const dynamicEnum = DYNAMIC_TYPE_MAP[formData.jewelleryType];
@@ -534,7 +545,6 @@ const AddProductPage = () => {
 
         setSaving(true);
 
-        // 1. Create the base Product row with a placeholder variant
         const basePayload = {
           ...formData,
           variants: [
@@ -558,16 +568,15 @@ const AddProductPage = () => {
           basePayload,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-                const productId = productRes.data?.product?.id || productRes.data?.id;
 
-                        if (!productId) {
+        const productId = productRes.data?.product?.id || productRes.data?.id;
+        if (!productId) {
           console.error('❌ Unexpected /products/premium response:', productRes.data);
           toast.error('Could not read product ID from the server response.');
           setSaving(false);
           return;
         }
 
-        // 2. Create the DynamicProduct record linked to that product
         const dpRes = await axios.post(
           'http://localhost:5000/api/admin/dynamic-products',
           {
@@ -579,12 +588,47 @@ const AddProductPage = () => {
           },
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        const dynamicProductId = dpRes.data.dynamicProduct.id;
+        const newDynamicProductId = dpRes.data.dynamicProduct.id;
 
         toast.success('Dynamic product created — opening editor…');
+        navigate(`/admin/dynamic-products/${newDynamicProductId}`);
+        return;
+      }
 
-        // 3. Navigate into the component editor
-        navigate(`/admin/dynamic-products/${dynamicProductId}/edit`);
+      // ============================================================
+      // EDIT DYNAMIC PRODUCT — save Basic Info only
+      // ============================================================
+      if (isEditMode && isDynamicType && dynamicProductId) {
+        setSaving(true);
+        try {
+          await axios.put(
+            `http://localhost:5000/api/products/${editId}`,
+            {
+              ...formData,
+              variants: [
+                {
+                  metal: 'GOLD',
+                  metalKarat: 22,
+                  metalWeight: 1,
+                  metalColor: 'Yellow',
+                  productSize: '',
+                  stock: 0,
+                  sku: '',
+                  isPlaceholder: true,
+                },
+              ],
+              metaKeywords: formData.metaKeywords.filter(k => k.trim()),
+              tags: formData.tags.filter(t => t.trim()),
+            },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          toast.success('Basic info saved');
+        } catch (error) {
+          console.error('Save basic info error:', error);
+          toast.error(error.response?.data?.message || 'Failed to save');
+        } finally {
+          setSaving(false);
+        }
         return;
       }
 
@@ -794,19 +838,27 @@ const AddProductPage = () => {
         </Section>
 
         {/* ============== DYNAMIC PRODUCT PANEL (dynamic types only) ============== */}
-        {isDynamicType && (
+        {isDynamicType && dynamicProductId && (
           <Section title="Dynamic Product Configuration" icon={Gem}>
-            <div className="space-y-4">
-              <div className="p-4 bg-gold-50 dark:bg-gold-900/20 border border-gold-200 dark:border-gold-800 rounded-lg">
-                <p className="text-sm text-gray-700 dark:text-gray-300">
-                  <strong>{formData.jewelleryType}</strong> uses component-based dynamic pricing.
-                  Variants, screw options, shipping, and color media are managed in the dedicated editor.
-                </p>
-                <p className="text-xs text-gray-500 mt-2">
-                  Fill in Title, Description, and other basic fields above, then click <em>Create</em>.
-                  You'll be taken straight into the component editor.
-                </p>
-              </div>
+            <DynamicProductConfigPanel
+              dynamicProductId={dynamicProductId}
+              token={token}
+            />
+          </Section>
+        )}
+
+        {/* Placeholder for a NEW dynamic product (not yet saved) */}
+        {isDynamicType && !dynamicProductId && !isEditMode && (
+          <Section title="Dynamic Product Configuration" icon={Gem}>
+            <div className="p-4 bg-gold-50 dark:bg-gold-900/20 border border-gold-200 dark:border-gold-800 rounded-lg">
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                <strong>{formData.jewelleryType}</strong> uses component-based dynamic pricing.
+                Variants, screw options, shipping, and color media are managed in the dedicated editor.
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                Fill in Title, Description, and other basic fields above, then click <em>Create</em>.
+                You'll be taken straight into the component editor.
+              </p>
             </div>
           </Section>
         )}
@@ -1625,7 +1677,9 @@ const AddProductPage = () => {
           >
             {saving
               ? (isEditMode ? 'Updating...' : 'Creating...')
-              : (isEditMode ? 'Update' : 'Create')}
+              : (isEditMode
+                  ? (isDynamicType ? 'Save Basic Info' : 'Update')
+                  : 'Create')}
           </button>
         </div>
       </div>
