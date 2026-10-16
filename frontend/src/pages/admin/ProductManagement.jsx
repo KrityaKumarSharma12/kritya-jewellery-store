@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { 
+import {
   Plus, Edit, Trash2, Search,
-  Upload, Download, 
+  Upload, Download,
   Package, Grid, List,
   AlertCircle, Star,
-  Sparkles, TrendingUp
+  Sparkles, TrendingUp, Eye, EyeOff
 } from 'lucide-react';
 
 import axios from 'axios';
@@ -20,16 +20,39 @@ const ProductManagement = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [categories, setCategories] = useState([]);
   const [error, setError] = useState(null);
+
+  // ✅ NEW: Show inactive toggle, persisted
+  const [showInactive, setShowInactive] = useState(() => {
+    try {
+      return localStorage.getItem('adminShowInactiveProducts') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
   const { token } = useAuth();
+
+  // Persist toggle
+  useEffect(() => {
+    try {
+      localStorage.setItem('adminShowInactiveProducts', String(showInactive));
+    } catch { /* ignore */ }
+  }, [showInactive]);
 
   const fetchProducts = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await axios.get('http://localhost:5000/api/admin/products', {
+
+      // ✅ Include inactive when toggle is on
+      const url = showInactive
+        ? 'http://localhost:5000/api/admin/products?includeInactive=true'
+        : 'http://localhost:5000/api/admin/products';
+
+      const response = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
+
       let productsData = [];
       if (response.data) {
         if (Array.isArray(response.data)) {
@@ -40,7 +63,7 @@ const ProductManagement = () => {
           productsData = response.data.data;
         }
       }
-      
+
       setProducts(productsData);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -49,7 +72,7 @@ const ProductManagement = () => {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, showInactive]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -76,17 +99,38 @@ const ProductManagement = () => {
     fetchCategories();
   }, [fetchProducts, fetchCategories]);
 
-  const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this product?')) {
-      try {
-        await axios.delete(`http://localhost:5000/api/admin/products/${id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        fetchProducts();
-      } catch (error) {
-        console.error('Error deleting product:', error);
-        alert('Error deleting product. Please try again.');
+    const handleDelete = async (product) => {
+    const id = product.id;
+    const isActive = product.isActive !== false;
+
+    // Two-step: first click soft-deletes, second (on already-inactive) hard-deletes
+    const confirmMessage = isActive
+      ? `Deactivate "${product.name}"?\n\nThis hides it from the storefront but keeps it in your records. Click delete again to permanently remove it.`
+      : `PERMANENTLY delete "${product.name}"?\n\nThis cannot be undone. If any orders reference this product, the delete will be blocked.`;
+
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      const url = isActive
+        ? `http://localhost:5000/api/admin/products/${id}`
+        : `http://localhost:5000/api/admin/products/${id}?permanent=true`;
+
+      const res = await axios.delete(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // Remove from local list
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+
+      const mode = res.data?.mode;
+      if (mode === 'hard') {
+        alert('Product permanently deleted.');
+      } else {
+        alert('Product deactivated. It now appears in "Show Inactive".');
       }
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      alert(error.response?.data?.message || 'Error deleting product. Please try again.');
     }
   };
 
@@ -163,12 +207,13 @@ const ProductManagement = () => {
     const stock = getProductStock(product);
     const sku = getProductSKU(product);
     const isActive = product.isActive !== undefined ? product.isActive : true;
+    const isDynamic = product.hasDynamicProduct === true;
 
     return (
       <div className="bg-white dark:bg-dark-card rounded-2xl shadow-lg hover:shadow-xl transition overflow-hidden group">
         <div className="relative h-48 sm:h-52 md:h-56 bg-gray-100 dark:bg-gray-800">
-          <img 
-            src={images[0] || '/api/placeholder/400/400'} 
+          <img
+            src={images[0] || '/api/placeholder/400/400'}
             alt={productName}
             className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
             onError={(e) => {
@@ -177,6 +222,12 @@ const ProductManagement = () => {
             }}
           />
           <div className="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[calc(100%-1rem)]">
+            {/* ✅ Dynamic badge */}
+            {isDynamic && (
+              <span className="bg-purple-600 text-white px-2 py-1 text-[10px] sm:text-xs rounded flex items-center gap-1 whitespace-nowrap">
+                <Sparkles className="h-3 w-3 flex-shrink-0" /> Dynamic
+              </span>
+            )}
             {product.isFeatured && (
               <span className="bg-gold-600 text-white px-2 py-1 text-[10px] sm:text-xs rounded flex items-center gap-1 whitespace-nowrap">
                 <Star className="h-3 w-3 flex-shrink-0" /> Featured
@@ -190,6 +241,11 @@ const ProductManagement = () => {
             {product.isBestSeller && (
               <span className="bg-green-600 text-white px-2 py-1 text-[10px] sm:text-xs rounded flex items-center gap-1 whitespace-nowrap">
                 <TrendingUp className="h-3 w-3 flex-shrink-0" /> Best Seller
+              </span>
+            )}
+            {!isActive && (
+              <span className="bg-gray-700 text-white px-2 py-1 text-[10px] sm:text-xs rounded whitespace-nowrap">
+                Inactive
               </span>
             )}
           </div>
@@ -212,8 +268,7 @@ const ProductManagement = () => {
               {sku && <p className="text-xs text-gray-400 truncate">SKU: {sku}</p>}
             </div>
             <div className="flex gap-1 flex-shrink-0">
-              {/* ⭐ Edit now navigates to the full premium editor page */}
-              <button 
+              <button
                 onClick={() => navigate(`/admin/products/edit/${product.id}`)}
                 className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
                 title="Edit product"
@@ -221,8 +276,8 @@ const ProductManagement = () => {
               >
                 <Edit className="h-4 w-4" />
               </button>
-              <button 
-                onClick={() => handleDelete(product.id)}
+              <button
+                onClick={() => handleDelete(product)}
                 className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
                 title="Delete product"
                 aria-label="Delete product"
@@ -239,7 +294,7 @@ const ProductManagement = () => {
             <div className="flex items-center gap-2 flex-shrink-0">
               <span className={`px-2 py-1 text-[10px] sm:text-xs rounded-full whitespace-nowrap ${
                 isActive
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
                   : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
               }`}>
                 {isActive ? 'Active' : 'Inactive'}
@@ -251,18 +306,20 @@ const ProductManagement = () => {
     );
   };
 
-  const filteredProducts = Array.isArray(products) 
+  const filteredProducts = Array.isArray(products)
     ? products.filter(p => {
         if (!p) return false;
         const searchLower = searchTerm.toLowerCase();
         const name = getProductName(p).toLowerCase();
         const category = getCategoryName(p.category).toLowerCase();
         const sku = getProductSKU(p).toLowerCase();
-        return name.includes(searchLower) || category.includes(searchLower) || sku.includes(searchLower);
+        const matchesSearch = name.includes(searchLower) || category.includes(searchLower) || sku.includes(searchLower);
+        const matchesCategory = selectedCategory === 'all' || getCategoryName(p.category) === selectedCategory;
+        return matchesSearch && matchesCategory;
       })
     : [];
 
-  const categoryOptions = Array.isArray(categories) 
+  const categoryOptions = Array.isArray(categories)
     ? categories.map(cat => typeof cat === 'string' ? cat : cat?.name || cat?.category || '')
     : ['Necklaces', 'Rings', 'Earrings', 'Bracelets', 'Pendants', 'Anklets'];
 
@@ -271,7 +328,7 @@ const ProductManagement = () => {
       <div className="text-center py-10 sm:py-12 px-4">
         <AlertCircle className="h-12 w-12 sm:h-16 sm:w-16 text-red-500 mx-auto mb-4" />
         <p className="text-sm sm:text-base text-red-500">{error}</p>
-        <button 
+        <button
           onClick={fetchProducts}
           className="mt-4 bg-gold-600 hover:bg-gold-700 text-white px-4 sm:px-6 py-2 rounded-lg transition text-sm sm:text-base"
         >
@@ -294,13 +351,13 @@ const ProductManagement = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-2 sm:gap-3">
-          <Link 
+          <Link
             to="/admin/products/add-product"
             className="bg-gold-600 hover:bg-gold-700 text-white px-3 sm:px-4 py-2 rounded-lg transition flex items-center gap-2 shadow-lg hover:shadow-xl text-xs sm:text-sm"
           >
             <Plus className="h-4 w-4 sm:h-5 sm:w-5" /> Add Product
           </Link>
-          
+
           <button className="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg transition flex items-center gap-2 shadow-lg hover:shadow-xl text-xs sm:text-sm">
             <Upload className="h-4 w-4 sm:h-5 sm:w-5" /> Import
           </button>
@@ -322,7 +379,7 @@ const ProductManagement = () => {
             className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg bg-white dark:bg-dark-card focus:outline-none focus:ring-2 focus:ring-gold-500 text-sm sm:text-base"
           />
         </div>
-        <select 
+        <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
           className="px-3 sm:px-4 py-2 border border-gray-300 dark:border-dark-border rounded-lg bg-white dark:bg-dark-card focus:outline-none focus:ring-2 focus:ring-gold-500 text-sm sm:text-base w-full sm:w-auto"
@@ -332,15 +389,30 @@ const ProductManagement = () => {
             <option key={cat} value={cat}>{cat}</option>
           ))}
         </select>
+
+        {/* ✅ NEW: Show inactive toggle */}
+        <button
+          onClick={() => setShowInactive((v) => !v)}
+          className={`px-3 sm:px-4 py-2 border rounded-lg transition flex items-center gap-2 text-xs sm:text-sm self-start sm:self-auto whitespace-nowrap ${
+            showInactive
+              ? 'bg-gray-900 text-white border-gray-900 dark:bg-gold-600 dark:border-gold-600'
+              : 'border-gray-300 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-bg'
+          }`}
+          title={showInactive ? 'Hide inactive products' : 'Show inactive products'}
+        >
+          {showInactive ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          {showInactive ? 'Hide Inactive' : 'Show Inactive'}
+        </button>
+
         <div className="flex border border-gray-300 dark:border-dark-border rounded-lg overflow-hidden self-start sm:self-auto flex-shrink-0">
-          <button 
+          <button
             onClick={() => setViewMode('grid')}
             className={`p-2 transition ${viewMode === 'grid' ? 'bg-gold-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-dark-bg'}`}
             aria-label="Grid view"
           >
             <Grid className="h-4 w-4 sm:h-5 sm:w-5" />
           </button>
-          <button 
+          <button
             onClick={() => setViewMode('list')}
             className={`p-2 transition ${viewMode === 'list' ? 'bg-gold-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-dark-bg'}`}
             aria-label="List view"
@@ -359,7 +431,7 @@ const ProductManagement = () => {
         <div className="text-center py-10 sm:py-12 px-4">
           <Package className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
           <p className="text-sm sm:text-base text-gray-500">No products found</p>
-          <Link 
+          <Link
             to="/admin/products/add-product"
             className="mt-4 inline-block bg-gold-600 hover:bg-gold-700 text-white px-4 sm:px-6 py-2 rounded-lg transition text-sm sm:text-base"
           >

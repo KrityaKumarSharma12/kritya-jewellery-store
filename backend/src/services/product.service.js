@@ -510,7 +510,8 @@ class ProductService {
       inStock,
     } = query;
 
-    const where = { isActive: true };
+        const { includeInactive } = query;
+    const where = includeInactive === 'true' ? {} : { isActive: true };
     const andConditions = [];
 
     if (category && category !== 'all') {
@@ -1367,9 +1368,49 @@ class ProductService {
     return prisma.product.update({ where: { id }, data: updates });
   }
 
-  // ============== DELETE PRODUCT ==============
+    // ============== DELETE PRODUCT ==============
+  // Soft delete (default): sets isActive = false
   async deleteProduct(id) {
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) {
+      const err = new Error('Product not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
     await prisma.product.update({ where: { id }, data: { isActive: false } });
+    return { id, mode: 'soft' };
+  }
+
+  // ============== HARD DELETE PRODUCT ==============
+  // Permanently removes the product row (cascades to variants, colorMedia, etc.)
+  async hardDeleteProduct(id) {
+    const existing = await prisma.product.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { orderItems: true } },
+      },
+    });
+
+    if (!existing) {
+      const err = new Error('Product not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Safety: block hard delete if any order references this product
+    // (Prisma will also throw a FK error, but we return a nicer message)
+    if (existing._count?.orderItems > 0) {
+      const err = new Error(
+        `Cannot permanently delete — ${existing._count.orderItems} order item(s) reference this product. ` +
+        `Keep it inactive instead.`
+      );
+      err.statusCode = 409;
+      throw err;
+    }
+
+    await prisma.product.delete({ where: { id } });
+    return { id, mode: 'hard' };
   }
 }
 

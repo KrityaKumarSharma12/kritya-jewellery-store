@@ -44,12 +44,27 @@ class AdminController {
     }
   }
 
-  async deleteProduct(req, res) {
+    async deleteProduct(req, res) {
     try {
-      await adminService.deleteProduct(req.params.id);
-      res.json({ message: 'Product deactivated successfully' });
+      // ?permanent=true → hard delete; otherwise soft delete
+      const permanent = req.query.permanent === 'true';
+
+      const productService = require('../services/product.service');
+      const result = permanent
+        ? await productService.hardDeleteProduct(req.params.id)
+        : await productService.deleteProduct(req.params.id);
+
+      res.json({
+        message: result.mode === 'hard'
+          ? 'Product permanently deleted'
+          : 'Product deactivated successfully',
+        mode: result.mode,
+      });
     } catch (error) {
       console.error('Delete product error:', error);
+      if (error.statusCode) {
+        return res.status(error.statusCode).json({ message: error.message });
+      }
       res.status(500).json({ message: 'Server error' });
     }
   }
