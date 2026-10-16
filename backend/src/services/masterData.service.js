@@ -38,9 +38,16 @@ const FALLBACK_SIZES = [
 
 class MasterDataService {
   // ============ JEWELLERY TYPES ============
+    // ============ JEWELLERY TYPES ============
   async getJewelleryTypes() {
     return prisma.jewelleryType.findMany({
       where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isDynamic: true,   // ✅ NEW — flags Haath Phool / Couple Bands / Bridal Set
+        isActive: true,
+      },
       orderBy: { name: 'asc' },
     });
   }
