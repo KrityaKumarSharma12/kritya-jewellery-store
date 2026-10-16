@@ -558,7 +558,14 @@ const AddProductPage = () => {
           basePayload,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        const productId = productRes.data.id;
+                const productId = productRes.data?.product?.id || productRes.data?.id;
+
+                        if (!productId) {
+          console.error('❌ Unexpected /products/premium response:', productRes.data);
+          toast.error('Could not read product ID from the server response.');
+          setSaving(false);
+          return;
+        }
 
         // 2. Create the DynamicProduct record linked to that product
         const dpRes = await axios.post(
