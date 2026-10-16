@@ -133,6 +133,18 @@ const AddProductPage = () => {
     };
   }
 
+  // ✅ NEW: dynamic-type detection
+  const selectedType = masterData.jewelleryTypes.find(
+    (t) => t.name === formData.jewelleryType
+  );
+  const isDynamicType = selectedType?.isDynamic === true;
+
+  const DYNAMIC_TYPE_MAP = {
+    'Haath Phool':  'HAATH_PHOOL',
+    'Couple Bands': 'COUPLE_BANDS',
+    'Bridal Set':   'BRIDAL_SET',
+  };
+
   const fetchMasterData = useCallback(async () => {
     try {
       const [
@@ -509,6 +521,69 @@ const AddProductPage = () => {
         toast.error('Product title is required');
         return;
       }
+
+      // ============================================================
+      // DYNAMIC PATH — Haath Phool / Couple Bands / Bridal Set
+      // ============================================================
+      if (isDynamicType && !isEditMode) {
+        const dynamicEnum = DYNAMIC_TYPE_MAP[formData.jewelleryType];
+        if (!dynamicEnum) {
+          toast.error(`Unknown dynamic type: ${formData.jewelleryType}`);
+          return;
+        }
+
+        setSaving(true);
+
+        // 1. Create the base Product row with a placeholder variant
+        const basePayload = {
+          ...formData,
+          variants: [
+            {
+              metal: 'GOLD',
+              metalKarat: 22,
+              metalWeight: 1,
+              metalColor: 'Yellow',
+              productSize: '',
+              stock: 0,
+              sku: '',
+              isPlaceholder: true,
+            },
+          ],
+          metaKeywords: formData.metaKeywords.filter(k => k.trim()),
+          tags: formData.tags.filter(t => t.trim()),
+        };
+
+        const productRes = await axios.post(
+          'http://localhost:5000/api/products/premium',
+          basePayload,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const productId = productRes.data.id;
+
+        // 2. Create the DynamicProduct record linked to that product
+        const dpRes = await axios.post(
+          'http://localhost:5000/api/admin/dynamic-products',
+          {
+            productId,
+            type: dynamicEnum,
+            maxRings: 5,
+            maxChainsPerRing: 1,
+            maxMedallions: 1,
+          },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const dynamicProductId = dpRes.data.dynamicProduct.id;
+
+        toast.success('Dynamic product created — opening editor…');
+
+        // 3. Navigate into the component editor
+        navigate(`/admin/dynamic-products/${dynamicProductId}/edit`);
+        return;
+      }
+
+      // ============================================================
+      // REGULAR PATH — unchanged
+      // ============================================================
       if (formData.variants.length === 0) {
         toast.error('At least one variant is required');
         return;
@@ -711,8 +786,26 @@ const AddProductPage = () => {
           </div>
         </Section>
 
-        {/* ============== VARIANTS ============== */}
-        {formData.variants.map((variant, vIndex) => (
+        {/* ============== DYNAMIC PRODUCT PANEL (dynamic types only) ============== */}
+        {isDynamicType && (
+          <Section title="Dynamic Product Configuration" icon={Gem}>
+            <div className="space-y-4">
+              <div className="p-4 bg-gold-50 dark:bg-gold-900/20 border border-gold-200 dark:border-gold-800 rounded-lg">
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  <strong>{formData.jewelleryType}</strong> uses component-based dynamic pricing.
+                  Variants, screw options, shipping, and color media are managed in the dedicated editor.
+                </p>
+                <p className="text-xs text-gray-500 mt-2">
+                  Fill in Title, Description, and other basic fields above, then click <em>Create</em>.
+                  You'll be taken straight into the component editor.
+                </p>
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {/* ============== VARIANTS (regular types only) ============== */}
+        {!isDynamicType && formData.variants.map((variant, vIndex) => (
           <Section key={vIndex} title={`Variant ${vIndex + 1}`} icon={Gem}>
             <div className="space-y-4 sm:space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
@@ -1069,14 +1162,17 @@ const AddProductPage = () => {
           </Section>
         ))}
 
-        <button
-          onClick={addVariant}
-          className="w-full mb-4 sm:mb-6 py-3 border-2 border-dashed border-gray-300 dark:border-dark-border rounded-lg text-gray-600 dark:text-gray-400 hover:border-gold-500 hover:text-gold-600 transition flex items-center justify-center gap-2 text-sm sm:text-base"
-        >
-          <Plus className="h-4 w-4 sm:h-5 sm:w-5" /> Add Variant
-        </button>
+        {!isDynamicType && (
+          <button
+            onClick={addVariant}
+            className="w-full mb-4 sm:mb-6 py-3 border-2 border-dashed border-gray-300 dark:border-dark-border rounded-lg text-gray-600 dark:text-gray-400 hover:border-gold-500 hover:text-gold-600 transition flex items-center justify-center gap-2 text-sm sm:text-base"
+          >
+            <Plus className="h-4 w-4 sm:h-5 sm:w-5" /> Add Variant
+          </button>
+        )}
 
-        {/* ============== STOCK & COMPLIANCE ============== */}
+        {/* ============== STOCK & COMPLIANCE (regular types only) ============== */}
+        {!isDynamicType && (
         <Section title="Stock & Compliance" icon={Package}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
             <Field label="Stock">
@@ -1134,8 +1230,10 @@ const AddProductPage = () => {
             </div>
           </div>
         </Section>
+        )}
 
-        {/* ============== SHIPPING ============== */}
+        {/* ============== SHIPPING (regular types only) ============== */}
+        {!isDynamicType && (
         <Section title="Shipping" icon={Truck}>
           <p className="text-xs text-gray-500 mb-4">
             No default set for this jewellery type — add one in Master Panel → Shipping Dimensions to stop retyping it.
@@ -1170,8 +1268,10 @@ const AddProductPage = () => {
             </Field>
           </div>
         </Section>
+        )}
 
-        {/* ============== SCREW OPTIONS ============== */}
+        {/* ============== SCREW OPTIONS (regular types only) ============== */}
+        {!isDynamicType && (
         <Section title="Screw Options" icon={Zap}>
           <div className="space-y-4">
             {formData.screwOptions.map((screw, index) => (
@@ -1235,8 +1335,10 @@ const AddProductPage = () => {
             </span>
           </label>
         </Section>
+        )}
 
-        {/* ============== PRODUCT MEDIA ============== */}
+        {/* ============== PRODUCT MEDIA (regular types only) ============== */}
+        {!isDynamicType && (
         <Section title="Product Media (Color-wise)" icon={ImageIcon}>
           <p className="text-xs text-gray-500 mb-4">
             Upload images/videos once per metal color. Every purity variant using that color gets the same media automatically.
@@ -1374,8 +1476,10 @@ const AddProductPage = () => {
             </div>
           )}
         </Section>
+        )}
 
-        {/* ============== SEO ============== */}
+        {/* ============== SEO (regular types only) ============== */}
+        {!isDynamicType && (
         <Section title="SEO" icon={Tag}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
             <Field label="Meta Title">
@@ -1497,6 +1601,7 @@ const AddProductPage = () => {
             </div>
           </div>
         </Section>
+        )}
 
         {/* ============== ACTIONS ============== */}
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pb-10">
