@@ -23,11 +23,9 @@ const ProductManagement = () => {
   const [categories, setCategories] = useState([]);
   const [error, setError] = useState(null);
 
-  // ✅ Filter: all | regular | dynamic — synced with URL ?filter=
   const filterFromUrl = searchParams.get('filter') || 'all';
   const [productFilter, setProductFilter] = useState(filterFromUrl);
 
-  // Show inactive toggle, persisted
   const [showInactive, setShowInactive] = useState(() => {
     try {
       return localStorage.getItem('adminShowInactiveProducts') === 'true';
@@ -38,7 +36,6 @@ const ProductManagement = () => {
 
   const { token } = useAuth();
 
-  // Sync filter state → URL
   useEffect(() => {
     const current = searchParams.get('filter') || 'all';
     if (current !== productFilter) {
@@ -52,7 +49,6 @@ const ProductManagement = () => {
     }
   }, [productFilter, searchParams, setSearchParams]);
 
-  // Sync URL → filter state (e.g. after redirect from /admin/dynamic-products)
   useEffect(() => {
     const fromUrl = searchParams.get('filter') || 'all';
     if (fromUrl !== productFilter) {
@@ -61,7 +57,6 @@ const ProductManagement = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // Persist showInactive
   useEffect(() => {
     try {
       localStorage.setItem('adminShowInactiveProducts', String(showInactive));
@@ -126,6 +121,34 @@ const ProductManagement = () => {
     fetchProducts();
     fetchCategories();
   }, [fetchProducts, fetchCategories]);
+
+  // ✅ NEW: Toggle active state
+  const handleToggleActive = async (product) => {
+    const newState = !product.isActive;
+
+    const confirmMessage = newState
+      ? `Activate "${product.name}"? It will be visible on the storefront.`
+      : `Deactivate "${product.name}"? It will be hidden from the storefront.`;
+
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      await axios.patch(
+        `http://localhost:5000/api/admin/products/${product.id}/active`,
+        { isActive: newState },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === product.id ? { ...p, isActive: newState } : p
+        )
+      );
+    } catch (error) {
+      console.error('Toggle active error:', error);
+      alert(error.response?.data?.message || 'Failed to toggle product status');
+    }
+  };
 
   const handleDelete = async (product) => {
     const id = product.id;
@@ -314,13 +337,18 @@ const ProductManagement = () => {
               <p className="text-xs sm:text-sm text-gray-500">Stock: {stock}</p>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <span className={`px-2 py-1 text-[10px] sm:text-xs rounded-full whitespace-nowrap ${
-                isActive
-                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-              }`}>
+              {/* ✅ NEW: Active/Inactive toggle button (clickable badge) */}
+              <button
+                onClick={() => handleToggleActive(product)}
+                className={`px-2 py-1 text-[10px] sm:text-xs rounded-full whitespace-nowrap transition ${
+                  isActive
+                    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50'
+                    : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50'
+                }`}
+                title={isActive ? 'Click to deactivate' : 'Click to activate'}
+              >
                 {isActive ? 'Active' : 'Inactive'}
-              </span>
+              </button>
             </div>
           </div>
         </div>
@@ -332,12 +360,10 @@ const ProductManagement = () => {
     ? products.filter(p => {
         if (!p) return false;
 
-        // Filter by dynamic / regular
         const isDynamic = p.hasDynamicProduct === true;
         if (productFilter === 'dynamic' && !isDynamic) return false;
         if (productFilter === 'regular' && isDynamic) return false;
 
-        // Filter by search
         const searchLower = searchTerm.toLowerCase();
         const name = getProductName(p).toLowerCase();
         const category = getCategoryName(p.category).toLowerCase();
@@ -347,7 +373,6 @@ const ProductManagement = () => {
           category.includes(searchLower) ||
           sku.includes(searchLower);
 
-        // Filter by category
         const matchesCategory =
           selectedCategory === 'all' ||
           getCategoryName(p.category) === selectedCategory;
@@ -383,7 +408,6 @@ const ProductManagement = () => {
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:justify-between sm:items-center gap-3 sm:gap-4">
         <div className="min-w-0">
           <h1 className="text-xl sm:text-2xl md:text-3xl font-playfair font-bold text-gray-800 dark:text-white truncate">
@@ -410,7 +434,6 @@ const ProductManagement = () => {
         </div>
       </div>
 
-      {/* ✅ Filter tabs: All / Regular / Dynamic */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-dark-border overflow-x-auto">
         {filterTabs.map((tab) => {
           const active = productFilter === tab.id;
@@ -437,7 +460,6 @@ const ProductManagement = () => {
         })}
       </div>
 
-      {/* Filters */}
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-4">
         <div className="relative flex-1 min-w-0 sm:min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400 pointer-events-none" />
@@ -491,7 +513,6 @@ const ProductManagement = () => {
         </div>
       </div>
 
-      {/* Products Grid */}
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-gold-600"></div>

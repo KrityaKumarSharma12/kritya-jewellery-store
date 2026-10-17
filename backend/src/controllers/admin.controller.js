@@ -44,7 +44,7 @@ class AdminController {
     }
   }
 
-    async deleteProduct(req, res) {
+  async deleteProduct(req, res) {
     try {
       // ?permanent=true → hard delete; otherwise soft delete
       const permanent = req.query.permanent === 'true';
@@ -64,6 +64,34 @@ class AdminController {
       console.error('Delete product error:', error);
       if (error.statusCode) {
         return res.status(error.statusCode).json({ message: error.message });
+      }
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+
+  // ✅ NEW: Toggle active state (activate / deactivate a product)
+  async toggleProductActive(req, res) {
+    try {
+      const { id } = req.params;
+      const { isActive } = req.body;
+
+      if (typeof isActive !== 'boolean') {
+        return res.status(400).json({ message: 'isActive must be boolean' });
+      }
+
+      const product = await prisma.product.update({
+        where: { id },
+        data: { isActive },
+      });
+
+      res.json({
+        message: isActive ? 'Product activated' : 'Product deactivated',
+        product: { id: product.id, isActive: product.isActive },
+      });
+    } catch (error) {
+      console.error('Toggle product active error:', error);
+      if (error.code === 'P2025') {
+        return res.status(404).json({ message: 'Product not found' });
       }
       res.status(500).json({ message: 'Server error' });
     }
