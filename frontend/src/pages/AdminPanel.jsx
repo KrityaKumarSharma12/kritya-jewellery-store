@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
+import {
+  Routes, Route, Link, useNavigate, useLocation,
+  Navigate, useParams,
+} from 'react-router-dom';
 import {
   LayoutDashboard, Package, ShoppingBag, Users,
   Settings, BarChart3, Tag,
@@ -10,6 +13,7 @@ import {
   Clipboard, UserCog, AlertCircle, Eye, Plus,
   FolderOpen, Layers, Sparkles, Ruler, Wrench,
 } from 'lucide-react';
+import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
 import Dashboard from './admin/Dashboard';
@@ -34,10 +38,6 @@ import AbandonedCart from './admin/AbandonedCart';
 import WishlistManagement from './admin/WishlistManagement';
 import AddProductPage from './admin/AddProductPage';
 
-// Placeholder pages (to be built out later)
-import DynamicProductsPage from './admin/DynamicProductsPage';
-import DynamicProductEditor from './admin/DynamicProductEditor';
-import AddDynamicProductPage from './admin/AddDynamicProductPage';
 import SizeManagementPage from './admin/SizeManagementPage';
 import ProductStylesPage from './admin/ProductStylesPage';
 import CollectionsPage from './admin/CollectionsPage';
@@ -45,6 +45,47 @@ import OccasionsPage from './admin/OccasionsPage';
 import KarigarsPage from './admin/KarigarsPage';
 import LowStockPage from './admin/LowStockPage';
 import StockAdjustmentsPage from './admin/StockAdjustmentsPage';
+
+// ============================================================
+// Legacy dynamic-product URL handling
+// ============================================================
+// /admin/dynamic-products/:id → /admin/products/edit/:productId
+const LegacyDynamicRedirect = () => {
+  const { id } = useParams();
+  const [productId, setProductId] = useState(undefined); // undefined = loading
+
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    axios
+      .get(`http://localhost:5000/api/admin/dynamic-products/${id}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      .then((res) => {
+        if (cancelled) return;
+        const pid = res.data?.productId || res.data?.product?.id || res.data?.dynamicProduct?.productId;
+        setProductId(pid || null);
+      })
+      .catch(() => {
+        if (!cancelled) setProductId(null);
+      });
+    return () => { cancelled = true; };
+  }, [id]);
+
+  if (productId === undefined) {
+    return (
+      <div className="flex items-center justify-center h-64 text-sm text-gray-500">
+        Redirecting…
+      </div>
+    );
+  }
+
+  if (productId) {
+    return <Navigate to={`/admin/products/edit/${productId}`} replace />;
+  }
+
+  return <Navigate to="/admin/products?filter=dynamic" replace />;
+};
 
 // ============================================================
 // Menu structure — grouped
@@ -82,10 +123,9 @@ const menuGroups = [
     label: 'Products',
     icon: Package,
     children: [
-      { id: 'products',         label: 'All Products',       icon: Package,     path: '/admin/products',             permission: 'view_product' },
-      { id: 'dynamic-products', label: 'Dynamic Products',   icon: Sparkles,    path: '/admin/dynamic-products' },
-      { id: 'add-product',      label: 'Add Product',        icon: Plus,        path: '/admin/products/add-product', permission: 'create_product' },
-      { id: 'low-stock',        label: 'Low & Out of Stock', icon: AlertCircle, path: '/admin/low-stock' },
+      { id: 'products',    label: 'All Products',       icon: Package,     path: '/admin/products',             permission: 'view_product' },
+      { id: 'add-product', label: 'Add Product',        icon: Plus,        path: '/admin/products/add-product', permission: 'create_product' },
+      { id: 'low-stock',   label: 'Low & Out of Stock', icon: AlertCircle, path: '/admin/low-stock' },
     ],
   },
 
@@ -484,9 +524,19 @@ const AdminPanel = () => {
             <Route path="/products/add-product" element={<PermissionGate permission="create_product"><AddProductPage /></PermissionGate>} />
             <Route path="/products/edit/:id" element={<PermissionGate permission="edit_product"><AddProductPage /></PermissionGate>} />
 
-            <Route path="/dynamic-products" element={<DynamicProductsPage />} />
-            <Route path="/dynamic-products/new" element={<AddDynamicProductPage />} />
-            <Route path="/dynamic-products/:id" element={<DynamicProductEditor />} />
+            {/* ✅ Legacy dynamic-product URLs → redirect to unified Products page */}
+            <Route
+              path="/dynamic-products"
+              element={<Navigate to="/admin/products?filter=dynamic" replace />}
+            />
+            <Route
+              path="/dynamic-products/new"
+              element={<Navigate to="/admin/products/add-product" replace />}
+            />
+            <Route
+              path="/dynamic-products/:id"
+              element={<LegacyDynamicRedirect />}
+            />
 
             <Route path="/categories" element={<PermissionGate permission="manage_categories"><CategoryManagement /></PermissionGate>} />
             <Route path="/subcategories" element={<PermissionGate permission="manage_categories"><SubcategoryManagement /></PermissionGate>} />

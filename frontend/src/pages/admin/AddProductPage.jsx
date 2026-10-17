@@ -78,7 +78,7 @@ const AddProductPage = () => {
   const [metalOptions, setMetalOptions] = useState([]);
   const [gemstoneOptions, setGemstoneOptions] = useState([]);
 
-  // ✅ NEW: remember the DynamicProduct ID when editing a dynamic product
+  // ✅ Track the DynamicProduct ID when editing a dynamic product
   const [dynamicProductId, setDynamicProductId] = useState(null);
 
   const [formData, setFormData] = useState({
@@ -97,6 +97,10 @@ const AddProductPage = () => {
     shippingLength: '',
     shippingWidth: '',
     shippingHeight: '',
+
+    // ✅ Top-level stock for dynamic products (regular products use variants[0].stock)
+    stock: 0,
+
     variants: [createEmptyVariant()],
     screwOptions: [{ screwType: '', screwMaterial: '', notes: '' }],
     colorMedia: [],
@@ -137,11 +141,16 @@ const AddProductPage = () => {
     };
   }
 
-  // ✅ Dynamic-type detection
+  // ✅ Dynamic-type detection with hardcoded fallback for known types
+  const HARDCODED_DYNAMIC_TYPES = ['Haath Phool', 'Couple Bands', 'Bridal Set'];
+
   const selectedType = masterData.jewelleryTypes.find(
     (t) => t.name === formData.jewelleryType
   );
-  const isDynamicType = selectedType?.isDynamic === true;
+
+  const isDynamicType =
+    selectedType?.isDynamic === true ||
+    (selectedType == null && HARDCODED_DYNAMIC_TYPES.includes(formData.jewelleryType));
 
   const DYNAMIC_TYPE_MAP = {
     'Haath Phool':  'HAATH_PHOOL',
@@ -216,7 +225,6 @@ const AddProductPage = () => {
       );
       const p = res.data;
 
-      // ✅ Detect & remember the dynamic product ID (if any)
       if (p.dynamicProduct?.id) {
         setDynamicProductId(p.dynamicProduct.id);
       } else {
@@ -239,6 +247,8 @@ const AddProductPage = () => {
         shippingLength: p.shippingLength ?? '',
         shippingWidth: p.shippingWidth ?? '',
         shippingHeight: p.shippingHeight ?? '',
+
+        stock: p.stock ?? 0,
 
         variants:
           Array.isArray(p.variants) && p.variants.length > 0
@@ -312,6 +322,18 @@ const AddProductPage = () => {
       fetchProductForEdit();
     }
   }, [isEditMode, fetchProductForEdit]);
+
+  // ✅ Auto-default stock=999 and continueSelling=true when picking a dynamic type in CREATE mode
+  useEffect(() => {
+    if (!isEditMode && isDynamicType) {
+      setFormData((prev) => ({
+        ...prev,
+        ...(prev.stock === 0 ? { stock: 999 } : {}),
+        ...(prev.continueSelling === false ? { continueSelling: true } : {}),
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDynamicType, isEditMode]);
 
   const addVariant = () => {
     setFormData(prev => ({
@@ -554,7 +576,7 @@ const AddProductPage = () => {
               metalWeight: 1,
               metalColor: 'Yellow',
               productSize: '',
-              stock: 0,
+              stock: parseInt(formData.stock, 10) || 0,
               sku: '',
               isPlaceholder: true,
             },
@@ -577,6 +599,8 @@ const AddProductPage = () => {
           return;
         }
 
+        console.log('🔍 Creating DynamicProduct for productId:', productId, '| type:', dynamicEnum);
+
         const dpRes = await axios.post(
           'http://localhost:5000/api/admin/dynamic-products',
           {
@@ -588,10 +612,46 @@ const AddProductPage = () => {
           },
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        const newDynamicProductId = dpRes.data.dynamicProduct.id;
 
+        console.log('🔍 /admin/dynamic-products response:', dpRes.data);
+
+        const newDpId =
+          dpRes.data?.dynamicProduct?.id ||
+          dpRes.data?.dp?.id ||
+          dpRes.data?.data?.dynamicProduct?.id ||
+          dpRes.data?.data?.id;
+
+        if (!newDpId) {
+          console.error('❌ DynamicProduct not created — unexpected response shape:', dpRes.data);
+          toast.error('Product created but dynamic configuration failed. Check console.');
+          setSaving(false);
+          return;
+        }
+
+        setSaving(false);
         toast.success('Dynamic product created — opening editor…');
-        navigate(`/admin/dynamic-products/${newDynamicProductId}`);
+
+        // 🚀 ROBUST REDIRECT
+        const targetUrl = `/admin/products/edit/${productId}`;
+        console.log('✅ Redirecting to:', targetUrl);
+
+        setTimeout(() => {
+          try {
+            navigate(targetUrl, { replace: true });
+            console.log('📍 navigate() called');
+
+            setTimeout(() => {
+              if (!window.location.pathname.includes(productId)) {
+                console.warn('⚠️ navigate() did not work — using window.location');
+                window.location.href = targetUrl;
+              }
+            }, 800);
+          } catch (err) {
+            console.error('❌ navigate() threw:', err);
+            window.location.href = targetUrl;
+          }
+        }, 200);
+
         return;
       }
 
@@ -612,7 +672,7 @@ const AddProductPage = () => {
                   metalWeight: 1,
                   metalColor: 'Yellow',
                   productSize: '',
-                  stock: 0,
+                  stock: parseInt(formData.stock, 10) || 0,
                   sku: '',
                   isPlaceholder: true,
                 },
@@ -633,7 +693,7 @@ const AddProductPage = () => {
       }
 
       // ============================================================
-      // REGULAR PATH — unchanged
+      // REGULAR PATH
       // ============================================================
       if (formData.variants.length === 0) {
         toast.error('At least one variant is required');
@@ -676,14 +736,29 @@ const AddProductPage = () => {
         toast.success('Product created successfully! 🎉');
       }
 
-      navigate('/admin/products');
+      setSaving(false);
+
+      // 🚀 ROBUST REDIRECT (regular path)
+      setTimeout(() => {
+        try {
+          navigate('/admin/products');
+          setTimeout(() => {
+            if (!window.location.pathname.endsWith('/admin/products')) {
+              window.location.href = '/admin/products';
+            }
+          }, 800);
+        } catch (err) {
+          console.error('❌ navigate() threw:', err);
+          window.location.href = '/admin/products';
+        }
+      }, 200);
+
     } catch (error) {
       console.error('Save product error:', error);
       toast.error(
         error.response?.data?.message ||
         `Failed to ${isEditMode ? 'update' : 'create'} product`
       );
-    } finally {
       setSaving(false);
     }
   };
@@ -1230,16 +1305,30 @@ const AddProductPage = () => {
           </button>
         )}
 
-        {/* ============== STOCK & COMPLIANCE (regular types only) ============== */}
-        {!isDynamicType && (
+        {/* ============== STOCK & COMPLIANCE (always visible) ============== */}
         <Section title="Stock & Compliance" icon={Package}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-            <Field label="Stock">
-              <NumberInput
-                value={formData.variants[0]?.stock ?? ''}
-                onChange={(e) => updateVariant(0, 'stock', e.target.value)}
-                className="w-full px-3 sm:px-4 py-2.5 border border-gray-300 dark:border-dark-border rounded-lg bg-white dark:bg-dark-bg text-sm sm:text-base"
-              />
+            <Field
+              label="Stock"
+              hint={
+                isDynamicType
+                  ? 'For dynamic products this becomes the stock count on the base product. 999 = unlimited.'
+                  : undefined
+              }
+            >
+              {isDynamicType ? (
+                <NumberInput
+                  value={formData.stock ?? ''}
+                  onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                  className="w-full px-3 sm:px-4 py-2.5 border border-gray-300 dark:border-dark-border rounded-lg bg-white dark:bg-dark-bg text-sm sm:text-base"
+                />
+              ) : (
+                <NumberInput
+                  value={formData.variants[0]?.stock ?? ''}
+                  onChange={(e) => updateVariant(0, 'stock', e.target.value)}
+                  className="w-full px-3 sm:px-4 py-2.5 border border-gray-300 dark:border-dark-border rounded-lg bg-white dark:bg-dark-bg text-sm sm:text-base"
+                />
+              )}
             </Field>
 
             <Field label="GST (%)">
@@ -1288,11 +1377,21 @@ const AddProductPage = () => {
               </Field>
             </div>
           </div>
-        </Section>
-        )}
 
-        {/* ============== SHIPPING (regular types only) ============== */}
-        {!isDynamicType && (
+          <label className="flex items-start gap-2 mt-5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={formData.continueSelling}
+              onChange={(e) => setFormData({ ...formData, continueSelling: e.target.checked })}
+              className="h-4 w-4 text-gold-600 rounded focus:ring-gold-500 flex-shrink-0 mt-0.5"
+            />
+            <span className="text-xs sm:text-sm text-gray-700 dark:text-gray-300">
+              Continue selling when out of stock
+            </span>
+          </label>
+        </Section>
+
+        {/* ============== SHIPPING (always visible) ============== */}
         <Section title="Shipping" icon={Truck}>
           <p className="text-xs text-gray-500 mb-4">
             No default set for this jewellery type — add one in Master Panel → Shipping Dimensions to stop retyping it.
@@ -1327,7 +1426,6 @@ const AddProductPage = () => {
             </Field>
           </div>
         </Section>
-        )}
 
         {/* ============== SCREW OPTIONS (regular types only) ============== */}
         {!isDynamicType && (
@@ -1381,22 +1479,10 @@ const AddProductPage = () => {
               <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" /> Add Option
             </button>
           </div>
-
-          <label className="flex items-start gap-2 mt-5 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={formData.continueSelling}
-              onChange={(e) => setFormData({ ...formData, continueSelling: e.target.checked })}
-              className="h-4 w-4 text-gold-600 rounded focus:ring-gold-500 flex-shrink-0 mt-0.5"
-            />
-            <span className="text-xs sm:text-sm text-gray-700 dark:text-gray-300">
-              Continuing selling when out of stock
-            </span>
-          </label>
         </Section>
         )}
 
-        {/* ============== PRODUCT MEDIA (regular types only) ============== */}
+        {/* ============== PRODUCT MEDIA (regular types only — dynamic uses Media tab) ============== */}
         {!isDynamicType && (
         <Section title="Product Media (Color-wise)" icon={ImageIcon}>
           <p className="text-xs text-gray-500 mb-4">
@@ -1537,8 +1623,7 @@ const AddProductPage = () => {
         </Section>
         )}
 
-        {/* ============== SEO (regular types only) ============== */}
-        {!isDynamicType && (
+        {/* ============== SEO (always visible) ============== */}
         <Section title="SEO" icon={Tag}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
             <Field label="Meta Title">
@@ -1660,7 +1745,6 @@ const AddProductPage = () => {
             </div>
           </div>
         </Section>
-        )}
 
         {/* ============== ACTIONS ============== */}
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3 pb-10">

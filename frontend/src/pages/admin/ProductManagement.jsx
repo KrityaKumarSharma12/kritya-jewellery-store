@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus, Edit, Trash2, Search,
   Upload, Download,
@@ -13,6 +13,8 @@ import { useAuth } from '../../context/AuthContext';
 
 const ProductManagement = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -21,7 +23,11 @@ const ProductManagement = () => {
   const [categories, setCategories] = useState([]);
   const [error, setError] = useState(null);
 
-  // ✅ Show inactive toggle, persisted
+  // ✅ Filter: all | regular | dynamic — synced with URL ?filter=
+  const filterFromUrl = searchParams.get('filter') || 'all';
+  const [productFilter, setProductFilter] = useState(filterFromUrl);
+
+  // Show inactive toggle, persisted
   const [showInactive, setShowInactive] = useState(() => {
     try {
       return localStorage.getItem('adminShowInactiveProducts') === 'true';
@@ -32,7 +38,30 @@ const ProductManagement = () => {
 
   const { token } = useAuth();
 
-  // Persist toggle
+  // Sync filter state → URL
+  useEffect(() => {
+    const current = searchParams.get('filter') || 'all';
+    if (current !== productFilter) {
+      const next = new URLSearchParams(searchParams);
+      if (productFilter === 'all') {
+        next.delete('filter');
+      } else {
+        next.set('filter', productFilter);
+      }
+      setSearchParams(next, { replace: true });
+    }
+  }, [productFilter, searchParams, setSearchParams]);
+
+  // Sync URL → filter state (e.g. after redirect from /admin/dynamic-products)
+  useEffect(() => {
+    const fromUrl = searchParams.get('filter') || 'all';
+    if (fromUrl !== productFilter) {
+      setProductFilter(fromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Persist showInactive
   useEffect(() => {
     try {
       localStorage.setItem('adminShowInactiveProducts', String(showInactive));
@@ -44,7 +73,6 @@ const ProductManagement = () => {
       setLoading(true);
       setError(null);
 
-      // Include inactive when toggle is on
       const url = showInactive
         ? 'http://localhost:5000/api/admin/products?includeInactive=true'
         : 'http://localhost:5000/api/admin/products';
@@ -103,7 +131,6 @@ const ProductManagement = () => {
     const id = product.id;
     const isActive = product.isActive !== false;
 
-    // Two-step: first click soft-deletes, second (on already-inactive) hard-deletes
     const confirmMessage = isActive
       ? `Deactivate "${product.name}"?\n\nThis hides it from the storefront but keeps it in your records. Click delete again to permanently remove it.`
       : `PERMANENTLY delete "${product.name}"?\n\nThis cannot be undone. If any orders reference this product, the delete will be blocked.`;
@@ -119,7 +146,6 @@ const ProductManagement = () => {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      // Remove from local list
       setProducts((prev) => prev.filter((p) => p.id !== id));
 
       const mode = res.data?.mode;
@@ -134,7 +160,6 @@ const ProductManagement = () => {
     }
   };
 
-  // Helper function to safely get category name
   const getCategoryName = (category) => {
     if (!category) return 'Uncategorized';
     if (typeof category === 'string') return category;
@@ -144,7 +169,6 @@ const ProductManagement = () => {
     return 'Uncategorized';
   };
 
-  // Helper function to safely get product name
   const getProductName = (product) => {
     if (!product) return 'Unnamed Product';
     if (typeof product === 'string') return product;
@@ -154,26 +178,21 @@ const ProductManagement = () => {
     return 'Unnamed Product';
   };
 
-  // Helper function to safely get images array (with colorMedia fallback)
   const getProductImages = (product) => {
     if (!product) return ['/api/placeholder/400/400'];
-
     if (Array.isArray(product.images) && product.images.length > 0) {
       return product.images;
     }
-
     if (Array.isArray(product.colorMedia) && product.colorMedia.length > 0) {
       const urls = product.colorMedia
         .filter((m) => m.type === 'image' || !m.type)
         .map((m) => m.url);
       if (urls.length > 0) return urls;
     }
-
     if (product.image) return [product.image];
     return ['/api/placeholder/400/400'];
   };
 
-  // Helper function to safely get price
   const getProductPrice = (product) => {
     if (!product) return 0;
     if (typeof product.price === 'number') return product.price;
@@ -181,7 +200,6 @@ const ProductManagement = () => {
     return 0;
   };
 
-  // Helper function to safely get stock
   const getProductStock = (product) => {
     if (!product) return 0;
     if (typeof product.stock === 'number') return product.stock;
@@ -189,16 +207,13 @@ const ProductManagement = () => {
     return 0;
   };
 
-  // Helper function to safely get SKU
   const getProductSKU = (product) => {
     if (!product) return '';
     return product.sku || product.SKU || '';
   };
 
   const ProductCard = ({ product }) => {
-    if (!product || typeof product !== 'object') {
-      return null;
-    }
+    if (!product || typeof product !== 'object') return null;
 
     const images = getProductImages(product);
     const categoryName = getCategoryName(product.category);
@@ -222,7 +237,6 @@ const ProductManagement = () => {
             }}
           />
           <div className="absolute top-2 left-2 flex gap-1 flex-wrap max-w-[calc(100%-1rem)]">
-            {/* Dynamic badge */}
             {isDynamic && (
               <span className="bg-purple-600 text-white px-2 py-1 text-[10px] sm:text-xs rounded flex items-center gap-1 whitespace-nowrap">
                 <Sparkles className="h-3 w-3 flex-shrink-0" /> Dynamic
@@ -288,7 +302,6 @@ const ProductManagement = () => {
           </div>
           <div className="flex items-end justify-between mt-3 gap-2">
             <div className="min-w-0">
-              {/* ✅ Dynamic products show "Configurable" — their real price comes from the component engine */}
               {isDynamic ? (
                 <p className="text-sm sm:text-base font-semibold text-purple-600 dark:text-purple-400 whitespace-nowrap">
                   Configurable
@@ -318,12 +331,27 @@ const ProductManagement = () => {
   const filteredProducts = Array.isArray(products)
     ? products.filter(p => {
         if (!p) return false;
+
+        // Filter by dynamic / regular
+        const isDynamic = p.hasDynamicProduct === true;
+        if (productFilter === 'dynamic' && !isDynamic) return false;
+        if (productFilter === 'regular' && isDynamic) return false;
+
+        // Filter by search
         const searchLower = searchTerm.toLowerCase();
         const name = getProductName(p).toLowerCase();
         const category = getCategoryName(p.category).toLowerCase();
         const sku = getProductSKU(p).toLowerCase();
-        const matchesSearch = name.includes(searchLower) || category.includes(searchLower) || sku.includes(searchLower);
-        const matchesCategory = selectedCategory === 'all' || getCategoryName(p.category) === selectedCategory;
+        const matchesSearch =
+          name.includes(searchLower) ||
+          category.includes(searchLower) ||
+          sku.includes(searchLower);
+
+        // Filter by category
+        const matchesCategory =
+          selectedCategory === 'all' ||
+          getCategoryName(p.category) === selectedCategory;
+
         return matchesSearch && matchesCategory;
       })
     : [];
@@ -347,6 +375,12 @@ const ProductManagement = () => {
     );
   }
 
+  const filterTabs = [
+    { id: 'all',     label: 'All Products', count: products.length },
+    { id: 'regular', label: 'Regular',      count: products.filter(p => !p.hasDynamicProduct).length },
+    { id: 'dynamic', label: 'Dynamic',      count: products.filter(p => p.hasDynamicProduct).length },
+  ];
+
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Header */}
@@ -356,7 +390,7 @@ const ProductManagement = () => {
             Products
           </h1>
           <p className="text-sm sm:text-base text-gray-500 dark:text-gray-400 mt-1">
-            Manage your jewellery products
+            Manage regular and dynamic jewellery products
           </p>
         </div>
         <div className="flex flex-wrap gap-2 sm:gap-3">
@@ -374,6 +408,33 @@ const ProductManagement = () => {
             <Download className="h-4 w-4 sm:h-5 sm:w-5" /> Export
           </button>
         </div>
+      </div>
+
+      {/* ✅ Filter tabs: All / Regular / Dynamic */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-dark-border overflow-x-auto">
+        {filterTabs.map((tab) => {
+          const active = productFilter === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setProductFilter(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition whitespace-nowrap ${
+                active
+                  ? 'border-gold-600 text-gold-600 dark:text-gold-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}
+            >
+              {tab.label}
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                active
+                  ? 'bg-gold-100 text-gold-700 dark:bg-gold-900/30 dark:text-gold-400'
+                  : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+              }`}>
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Filters */}
@@ -399,7 +460,6 @@ const ProductManagement = () => {
           ))}
         </select>
 
-        {/* Show inactive toggle */}
         <button
           onClick={() => setShowInactive((v) => !v)}
           className={`px-3 sm:px-4 py-2 border rounded-lg transition flex items-center gap-2 text-xs sm:text-sm self-start sm:self-auto whitespace-nowrap ${
@@ -439,13 +499,21 @@ const ProductManagement = () => {
       ) : filteredProducts.length === 0 ? (
         <div className="text-center py-10 sm:py-12 px-4">
           <Package className="h-12 w-12 sm:h-16 sm:w-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-sm sm:text-base text-gray-500">No products found</p>
-          <Link
-            to="/admin/products/add-product"
-            className="mt-4 inline-block bg-gold-600 hover:bg-gold-700 text-white px-4 sm:px-6 py-2 rounded-lg transition text-sm sm:text-base"
-          >
-            Add Your First Product
-          </Link>
+          <p className="text-sm sm:text-base text-gray-500">
+            {productFilter === 'dynamic'
+              ? 'No dynamic products found'
+              : productFilter === 'regular'
+              ? 'No regular products found'
+              : 'No products found'}
+          </p>
+          {productFilter !== 'dynamic' && (
+            <Link
+              to="/admin/products/add-product"
+              className="mt-4 inline-block bg-gold-600 hover:bg-gold-700 text-white px-4 sm:px-6 py-2 rounded-lg transition text-sm sm:text-base"
+            >
+              Add Your First Product
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
